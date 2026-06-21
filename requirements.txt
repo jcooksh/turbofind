@@ -1,0 +1,20 @@
+# TurboFind — local semantic file explorer
+
+# --- core (always required) ---
+turbovec>=0.8.0          # TurboQuant vector index (ARM NEON SIMD)
+watchdog>=3.0.0          # filesystem event watcher
+numpy>=1.24
+
+# --- text modality (MULTI_MODAL=0, the default) ---
+sentence-transformers>=2.2.0   # local embeddings (all-MiniLM-L6-v2, 384-dim)
+pypdf[crypto]>=4.0            # extract text from .pdf (incl. AES-encrypted; needs cryptography)
+
+# --- multimodal modality (MULTI_MODAL=1): images + video via CLIP ---
+# open_clip loads the laion/DataComp ViT-B-32 checkpoint (512-dim).
+open_clip_torch>=2.24.0
+torch>=2.2
+pillow>=10.0             # image decoding
+# plus the `ffmpeg` binary on PATH for video frame sampling (brew install ffmpeg)
+
+# --- optional: native macOS Spotlight bridge (best-effort, see spotlight.py) ---
+pyobjc-framework-CoreSpotlight>=10.0

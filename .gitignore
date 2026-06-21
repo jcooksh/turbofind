@@ -1,0 +1,25 @@
+# Python virtualenv (huge — torch wheels, ~1GB)
+.venv/
+venv/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# TurboFind data / indexes (machine-specific, contain your file paths)
+.turbofind/
+*.tvim
+paths_mapping*.json
+
+# Swift build artifacts
+TurboFind
+*.o
+.build/
+
+# macOS / editor cruft
+.DS_Store
+*.swp
