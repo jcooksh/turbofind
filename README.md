@@ -12,9 +12,11 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -U pip                     # old pip can choke on wheels
 pip install -r requirements.txt        # first run downloads the models (~once)
 
-# index a folder — text, PDFs, images & video. MULTI_MODAL=1 turns on media
-# the first time; after that it's automatic.
-TURBOFIND_MULTI_MODAL=1 python ingest.py --once ~/Documents
+# index your files — text, PDFs, images & video. ~ = your whole home (junk
+# dirs like node_modules/Library are auto-skipped). First run takes a few
+# minutes; the progress bar shows an ETA. MULTI_MODAL=1 turns on media the
+# first time; after that it's automatic.
+TURBOFIND_MULTI_MODAL=1 python ingest.py --once ~
 
 python serve.py                        # then open http://localhost:8765
 ```
@@ -22,6 +24,9 @@ python serve.py                        # then open http://localhost:8765
 That's it. Type in the browser, hit **Enter** to reveal a file in Finder.
 Prefer the terminal? `python search.py "my tax documents"`.
 
+- Point it at a smaller folder to start if you like — but **not an empty one**:
+  semantic search needs a real corpus (a near-empty `~/Documents`, common with
+  iCloud, just returns the same few results every query).
 - New files later: re-run the `ingest.py --once …` line, or run the live daemon
   `python ingest.py ~` to auto-index as files change.
 - **Video** needs the ffmpeg binary: `brew install ffmpeg`.

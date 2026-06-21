@@ -598,9 +598,18 @@ class Coordinator:
                 pruned += m.prune_missing(seen[name])
         for m in self._managers.values():
             m.flush(force=True)
+        total = self.total_indexed()
         log.info("scan done: %d new, %d pruned, %d total (%s)",
-                 indexed, pruned, self.total_indexed(),
-                 "complete" if completed else "interrupted")
+                 indexed, pruned, total, "complete" if completed else "interrupted")
+        # Tiny index = bad first impression: every query returns the same handful
+        # of files. Usually means an almost-empty folder (e.g. iCloud moved your
+        # Documents). Steer the user at a folder with real content.
+        if completed and total < 25:
+            log.warning(
+                "only %d files indexed under %s — too few for useful semantic "
+                "search (every query returns the same few). Point ingest at a "
+                "folder with your actual files, e.g. your whole home:  "
+                "TURBOFIND_MULTI_MODAL=1 python ingest.py --once ~", total, root)
 
     def initial_sync(self, root: Path, progress: bool = False) -> None:
         """Synchronous, unthrottled full scan (foreground / tests)."""
