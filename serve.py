@@ -90,10 +90,10 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  </main>
  <aside class="right">
    <p class="ttl">Types</p>
-   <label class="flt"><input type="checkbox" class="tfilter" value="text" checked> \u{1F4C4} Text</label>
-   <label class="flt"><input type="checkbox" class="tfilter" value="pdf" checked> \u{1F4D1} PDF</label>
-   <label class="flt"><input type="checkbox" class="tfilter" value="image" checked> \u{1F5BC}\u{FE0F} Images</label>
-   <label class="flt"><input type="checkbox" class="tfilter" value="video" checked> \u{1F3AC} Video</label>
+   <label class="flt"><input type="checkbox" class="tfilter" value="text" checked> 📄 Text</label>
+   <label class="flt"><input type="checkbox" class="tfilter" value="pdf" checked> 📑 PDF</label>
+   <label class="flt"><input type="checkbox" class="tfilter" value="image" checked> 🖼️ Images</label>
+   <label class="flt"><input type="checkbox" class="tfilter" value="video" checked> 🎬 Video</label>
  </aside>
 </div>
 <script>
@@ -101,9 +101,9 @@ const q=document.getElementById('q'),R=document.getElementById('results'),S=docu
 let timer=null, rows=[], sel=0;
 
 function icon(p){const e=(p.split('.').pop()||'').toLowerCase();
-  if(e==='pdf')return'\u{1F4D1}';
-  if(['png','jpg','jpeg'].includes(e))return'\u{1F5BC}\u{FE0F}';
-  if(['mp4','mov','m4v'].includes(e))return'\u{1F3AC}';return'\u{1F4C4}';}
+  if(e==='pdf')return'📑';
+  if(['png','jpg','jpeg'].includes(e))return'🖼️';
+  if(['mp4','mov','m4v'].includes(e))return'🎬';return'📄';}
 function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 function render(items){rows=items;sel=0;
