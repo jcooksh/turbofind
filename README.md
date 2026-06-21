@@ -9,6 +9,7 @@ Nothing leaves your machine.
 ```bash
 git clone https://github.com/jcooksh/turbofind && cd turbofind
 python3 -m venv .venv && source .venv/bin/activate
+pip install -U pip                     # old pip can choke on wheels
 pip install -r requirements.txt        # first run downloads the models (~once)
 
 # index a folder — text, PDFs, images & video. MULTI_MODAL=1 turns on media

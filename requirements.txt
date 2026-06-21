@@ -16,5 +16,8 @@ torch>=2.2
 pillow>=10.0             # image decoding
 # plus the `ffmpeg` binary on PATH for video frame sampling (brew install ffmpeg)
 
-# --- optional: native macOS Spotlight bridge (best-effort, see spotlight.py) ---
-pyobjc-framework-CoreSpotlight>=10.0
+# --- optional: native macOS Spotlight bridge (NOT installed by default) ---
+# The Spotlight bridge is best-effort and no-ops without this; the app works
+# fully without it. Only install if you want it AND have a Python with prebuilt
+# pyobjc wheels (older Pythons try to compile pyobjc-core from source and can
+# fail on newer clang). To enable:  pip install pyobjc-framework-CoreSpotlight
