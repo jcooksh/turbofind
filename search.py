@@ -68,8 +68,6 @@ BM25_K1 = 1.5
 BM25_B = 0.75
 # Cap on filename matches unioned into the candidate set (see run_search).
 FILENAME_UNION_CAP = 200
-# Reciprocal Rank Fusion constant for merging per-lane result lists (standard 60).
-RRF_K = 60
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -395,24 +393,12 @@ def run_search(query: str, k: int, types=None, roots=None) -> List[Hit]:
     if not candidates:
         return []
 
-    # 4) Cross-lane merge via Reciprocal Rank Fusion. CLIP (text->image) cosines
-    #    sit in a LOWER absolute band than MiniLM (text->text) due to the modality
-    #    gap, so a uniform score comparison would bury relevant media under text.
-    #    Instead rank WITHIN each lane (where cosines are comparable) and fuse by
-    #    rank: each lane's best competes with the other's best, so media surfaces
-    #    alongside text. In text-only mode there's one lane, so rrf is monotonic
-    #    with `final` and ordering is unchanged.
-    by_lane: Dict[str, List[dict]] = {}
-    for c in candidates:
-        by_lane.setdefault(c["lane"], []).append(c)
-    for lane_cands in by_lane.values():
-        lane_cands.sort(key=lambda c: c["final"], reverse=True)
-        for rank, c in enumerate(lane_cands, start=1):
-            c["rrf"] = 1.0 / (RRF_K + rank)
-
-    # Hard tier (explicit whole-name match) first; then rank-fused order across
-    # lanes; then blended score as the final tiebreak.
-    candidates.sort(key=lambda c: (c["filename_hit"], c["rrf"], c["final"]), reverse=True)
+    # 4) Rank by relevance: explicit whole-name matches first (hard tier), then
+    #    by blended score. (An earlier cross-lane rank-fusion interleaved
+    #    low-relevance images among high-relevance docs — straight score order is
+    #    what users expect. The (cos+1)/2 blend keeps text vs media comparable
+    #    enough that image queries still surface images near the top.)
+    candidates.sort(key=lambda c: (c["filename_hit"], c["final"]), reverse=True)
 
     hits: List[Hit] = []
     for c in candidates[:k]:
