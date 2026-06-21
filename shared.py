@@ -38,14 +38,15 @@ from typing import Dict, Iterator, List, Optional, Tuple
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Air-gap: force the embedding stack offline *before* it is ever imported.
-# These env vars make HuggingFace / sentence-transformers refuse network calls.
-# If the model is not yet in the local cache, the user must run one priming
-# download (see README); after that everything is fully local.
+# Models download from HuggingFace on FIRST use, then load from local cache.
+# Only the (public) model weights are ever fetched — your files and queries are
+# embedded locally and never leave the machine. For a guaranteed no-network run
+# after the first download, set TURBOFIND_OFFLINE=1 (forces HF fully offline).
 # ---------------------------------------------------------------------------
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+if os.environ.get("TURBOFIND_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}:
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 
 # ===========================================================================

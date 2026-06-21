@@ -1,10 +1,32 @@
 # TurboFind
 
 A private, blazing-fast, **fully local** semantic file explorer for macOS.
+Search your files — text, PDFs, images, video — by *meaning*, not filename.
+Nothing leaves your machine.
 
-It watches a folder, embeds your files, stores the vectors in a
-[`turbovec`](https://pypi.org/project/turbovec/) TurboQuant index, and lets you
-search by *meaning* from the terminal. No file content ever leaves your machine.
+## ⚡ Quick start
+
+```bash
+git clone https://github.com/jcooksh/turbofind && cd turbofind
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt        # first run downloads the models (~once)
+
+# index a folder — text, PDFs, images & video. MULTI_MODAL=1 turns on media
+# the first time; after that it's automatic.
+TURBOFIND_MULTI_MODAL=1 python ingest.py --once ~/Documents
+
+python serve.py                        # then open http://localhost:8765
+```
+
+That's it. Type in the browser, hit **Enter** to reveal a file in Finder.
+Prefer the terminal? `python search.py "my tax documents"`.
+
+- New files later: re-run the `ingest.py --once …` line, or run the live daemon
+  `python ingest.py ~` to auto-index as files change.
+- **Video** needs the ffmpeg binary: `brew install ffmpeg`.
+
+> macOS · Apple Silicon. First run pulls the embedding models from HuggingFace
+> (one time); everything after is offline. Set `TURBOFIND_OFFLINE=1` to force it.
 
 ## Architecture
 
@@ -65,33 +87,36 @@ images and video frames (e.g. `"a dog on a beach"` surfaces `beach.jpg`).
   each frame is CLIP-encoded, then mean-pooled + renormalised into one vector.
   Requires the `ffmpeg` binary on PATH (`brew install ffmpeg`).
 
-## Setup
+## Setup (detail)
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # text mode
+`pip install -r requirements.txt` installs everything — text (MiniLM), PDF
+(`pypdf[crypto]`), multimodal (`open_clip_torch`, `torch`, `pillow`), and the
+Spotlight bindings. **Video** additionally needs the ffmpeg binary
+(`brew install ffmpeg`).
 
-# multimodal mode also needs: open_clip_torch torch pillow + ffmpeg binary
-# Spotlight bridge also needs: pyobjc-framework-CoreSpotlight
-
-# One-time model prime (needs network ONCE; then HF_HUB_OFFLINE keeps it air-gapped):
-python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/all-MiniLM-L6-v2')"
-# multimodal prime:
-# python -c "import open_clip; open_clip.create_model_and_transforms('hf-hub:laion/CLIP-ViT-B-32-256x256-DataComp-S34B-b86K')"
-```
+Models download from HuggingFace on first use, then load from local cache — no
+manual prime step. Only public model weights are fetched; your files and queries
+never leave the machine. For a guaranteed no-network run after caching, set
+`TURBOFIND_OFFLINE=1`.
 
 ## Usage
 
 ```bash
-# Terminal 1 — daemon (defaults to ~/Documents)
-python ingest.py
-TURBOFIND_MULTI_MODAL=1 python ingest.py ~/Pictures   # multimodal
+# index once and exit (live progress bar + ETA)
+python ingest.py --once ~/Documents
+# …or run a live daemon that watches a folder and indexes changes
+python ingest.py ~
 
-# Terminal 2 — search any time
-python search.py "my server configurations"
-python search.py -k 10 "quarterly budget notes"
-TURBOFIND_MULTI_MODAL=1 python search.py "a dog on a beach"
+# search — browser UI (model stays warm, instant)
+python serve.py                       # http://localhost:8765
+# …or from the terminal
+python search.py "quarterly budget notes"
+python search.py "a dog on a beach"   # finds images & video too
 ```
+
+Media (images/video) auto-enables once a media index exists. To create it the
+first time, run any `ingest` with `TURBOFIND_MULTI_MODAL=1` (see Quick start);
+after that every command picks it up automatically.
 
 ## Configuration (environment variables)
 
