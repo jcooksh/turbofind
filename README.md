@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white.svg">
+    <img src="assets/logo-black.svg" width="104" alt="TurboFind">
+  </picture>
+</p>
+
 # TurboFind
 
 A private, blazing-fast, **fully local** semantic file explorer for macOS.

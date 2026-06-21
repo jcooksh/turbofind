@@ -43,12 +43,14 @@ _SEARCH_LOCK = threading.Lock()
 INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TurboFind</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
  :root{color-scheme:dark}
  *{box-sizing:border-box}
  body{margin:0;height:100vh;display:flex;flex-direction:column;
       font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1115;color:#e8eaed}
- header{padding:14px 20px;border-bottom:1px solid #1f242d;flex:none}
+ header{padding:12px 20px;border-bottom:1px solid #1f242d;flex:none;display:flex;align-items:center;gap:10px}
+ header svg{width:22px;height:22px;flex:none}
  header b{font-size:12px;letter-spacing:.2em;color:#8a8f98}
  .cols{flex:1;display:flex;min-height:0}
  aside{width:240px;flex:none;overflow:auto;padding:14px;border-right:1px solid #1f242d}
@@ -75,7 +77,10 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  .hint{color:#4b515c;font-size:11px;margin-top:8px}
  button.mini{font-size:11px;background:#1d2129;color:#9aa0aa;border:1px solid #2a2e37;border-radius:6px;padding:3px 8px;cursor:pointer;margin-bottom:8px}
 </style></head><body>
-<header><b>TURBOFIND</b></header>
+<header>
+  <svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#fff" d="M8 10 L56 10 L52 21 L12 21 Z M34 25 L53 25 L49 35 L30 35 Z M27 10 L45 10 L29 32 L40 32 L18 58 L27 33 L15 33 Z"/></svg>
+  <b>TURBOFIND</b>
+</header>
 <div class="cols">
  <aside class="left">
    <p class="ttl">Folders</p>
@@ -179,6 +184,14 @@ document.getElementById('clearF').onclick=()=>{document.querySelectorAll('#tree 
 </script></body></html>"""
 
 
+FAVICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<style>path{fill:#111}@media (prefers-color-scheme:dark){path{fill:#fff}}</style>'
+    '<path d="M8 10 L56 10 L52 21 L12 21 Z M34 25 L53 25 L49 35 L30 35 Z '
+    'M27 10 L45 10 L29 32 L40 32 L18 58 L27 33 L15 33 Z"/></svg>'
+)
+
+
 def _folders() -> dict:
     """Directories that contain indexed files (across all lanes) -> count."""
     counts: dict = {}
@@ -202,6 +215,8 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/", "/index.html"):
             self._send_html(INDEX_HTML)
+        elif parsed.path == "/favicon.svg":
+            self._send(200, "image/svg+xml", FAVICON_SVG.encode("utf-8"))
         elif parsed.path == "/folders":
             self._send_json(200, sorted(_folders().keys()))
         elif parsed.path == "/search":
