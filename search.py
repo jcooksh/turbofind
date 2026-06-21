@@ -236,6 +236,8 @@ def _format_bar(score: float, width: int = 20) -> str:
 
 def _kind(path: str) -> str:
     suffix = Path(path).suffix.lower()
+    if suffix == ".pdf":
+        return "pdf"
     if suffix in shared.IMAGE_SUFFIXES:
         return "image"
     if suffix in shared.VIDEO_SUFFIXES:
@@ -277,7 +279,9 @@ def render(query: str, hits: List[Hit], style: _Style) -> str:
 # Core hybrid search
 # ---------------------------------------------------------------------------
 
-def run_search(query: str, k: int) -> List[Hit]:
+def run_search(query: str, k: int, types=None, roots=None) -> List[Hit]:
+    """`types`: optional set of kinds to keep ('text'/'pdf'/'image'/'video').
+    `roots`: optional list of folder path-prefixes to restrict results to."""
     query = query.strip()
     if not query:
         raise ValueError("query is empty")
@@ -378,6 +382,18 @@ def run_search(query: str, k: int) -> List[Hit]:
         c["lexical"] = lexical
         c["filename_hit"] = filename_hit
         c["final"] = SEMANTIC_WEIGHT * semantic + LEXICAL_WEIGHT * lexical
+
+    # 3b) UI filters: keep only chosen file types and/or files under chosen
+    #     folders (path-prefix). Applied before the merge so ranks reflect the
+    #     filtered set.
+    if types:
+        wanted = set(types)
+        candidates = [c for c in candidates if _kind(c["path"]) in wanted]
+    if roots:
+        prefixes = tuple(roots)
+        candidates = [c for c in candidates if c["path"].startswith(prefixes)]
+    if not candidates:
+        return []
 
     # 4) Cross-lane merge via Reciprocal Rank Fusion. CLIP (text->image) cosines
     #    sit in a LOWER absolute band than MiniLM (text->text) due to the modality
