@@ -91,9 +91,24 @@ with the cursor already in the search box → type. Then:
   highlights the file
 
 (While typing, Space types a space for multi-word queries — press ↓ first to use
-Quick Look, just like Finder.) Type-filter checkboxes (text / PDF / image /
-video) sit under the search box, and every result shows the date it was added to
-your Mac. Right-click the bolt for **Update TurboFind** / **Re-index** / **Quit**.
+Quick Look, just like Finder. Delete jumps back to the box to fix your query.)
+Type-filter checkboxes (text / PDF / image / video) sit under the search box, and
+every result shows the date it was added to your Mac. Right-click the bolt for
+**Theme** / **Update TurboFind** / **Re-index** / **Quit**.
+
+### Themes
+
+Right-click the bolt → **Theme**. Each theme changes the **layout**, not just the
+colours, and your pick is remembered (UserDefaults):
+
+| Theme | Look |
+|-------|------|
+| **Default (Dark)** | the original — two-line rows, date column left, score right |
+| **Paper (Light)** | light, dense single-line rows, date on the right |
+| **Spotlight** | big centred search field, icon-forward rows, no score/date |
+| **Terminal** | monospace green-on-black, ultra-dense, `[yyyy-mm-dd]` dates |
+| **Cards** | roomy purple rows with a date pill |
+| **Minimal** | light, centred, filename-only, lots of air |
 
 ### Updating
 

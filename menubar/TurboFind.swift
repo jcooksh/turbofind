@@ -6,23 +6,21 @@
 // in the box: type → live results → ↓ into the list → Space = Quick Look,
 // Enter / click = reveal in Finder. No browser, no WebView, no localhost URL.
 //
+// THEMES: the look AND the layout are theme-driven (see `Theme` / `Themes`).
+// "Default (Dark)" reproduces the original. Pick another from the bolt's
+// right-click → Theme submenu; the choice persists in UserDefaults.
+//
 // The search ENGINE is Python (turbovec + CLIP/MiniLM), which Swift can't run —
 // so this app launches `serve.py` as a HIDDEN background child on loopback and
-// talks to its JSON API (GET /search, /reveal, /preview) over 127.0.0.1. The
-// app owns the engine's lifecycle (starts on launch, kills on quit).
+// talks to its JSON API (GET /search, /reveal, /preview) over 127.0.0.1.
 //
-// ─── BUILD ──────────────────────────────────────────────────────────────────
 //   cd menubar && ./build.sh && open TurboFind.app
 //   (Agent app: no Dock icon, lives only in the menu bar.)
-//
-// Edit `Cfg` if your repo isn't at ~/turbofind.
 // ============================================================================
 
 import AppKit
 import Carbon.HIToolbox    // RegisterEventHotKey — consuming global hot-key (Option+F)
 
-// The Carbon hot-key callback is a plain C function (no captured context); it
-// calls through this trampoline, set once at launch and run on the main thread.
 private var tfHotKeyAction: (() -> Void)?
 private func tfHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?,
                              _ userData: UnsafeMutableRawPointer?) -> OSStatus {
@@ -34,8 +32,7 @@ enum Cfg {
     static let repoDir   = "\(NSHomeDirectory())/turbofind"
     static let python    = "\(NSHomeDirectory())/turbofind/.venv/bin/python"
     static let serverURL = "http://127.0.0.1:8765"
-    static let multiModal = true                      // set TURBOFIND_MULTI_MODAL
-    static let popover    = NSSize(width: 600, height: 500)
+    static let multiModal = true
 }
 
 // One search result, decoded straight from serve.py's /search JSON.
@@ -47,17 +44,160 @@ struct Hit: Decodable {
     let added: Double
 }
 
+extension NSColor {
+    convenience init(_ hex: UInt32) {
+        self.init(srgbRed: CGFloat((hex >> 16) & 0xff) / 255,
+                  green:    CGFloat((hex >> 8) & 0xff) / 255,
+                  blue:     CGFloat(hex & 0xff) / 255, alpha: 1)
+    }
+}
+
 // ============================================================================
-// Results table — custom NSTableView so we can route Space/Enter/Esc and "type
-// to jump back to the search box" the way Finder/Spotlight do.
+// Theme model — colours AND layout. A theme is a complete look: appearance,
+// palette, fonts, the row layout, the search-field style, popover size.
+// ============================================================================
+enum DatePos { case leftColumn, right, hidden }
+enum SearchStyle { case rounded, underline, pill, prompt, centered }
+enum DateFmt { case long, short, isoBracket }
+
+struct LayoutSpec {
+    var showIcon = true
+    var iconSize: CGFloat = 15
+    var datePos: DatePos = .leftColumn
+    var dateFmt: DateFmt = .long
+    var datePill = false
+    var showPath = true
+    var inline = false          // name + path on one line vs stacked
+    var showScore = true
+    var showBadge = true
+    var nameOnly = false        // render just the filename
+    var centered = false        // centre the row content
+}
+
+struct Theme {
+    let id: String
+    let name: String
+    let dark: Bool
+    let popover: NSSize
+    // palette
+    let bg: NSColor
+    let fieldBg: NSColor
+    let fieldText: NSColor
+    let accent: NSColor         // selection tint + flourishes
+    let title: NSColor
+    let subtitle: NSColor
+    let faint: NSColor
+    // type
+    let mono: Bool
+    let titleSize: CGFloat
+    let pathSize: CGFloat
+    let searchSize: CGFloat
+    // layout
+    let rowHeight: CGFloat
+    let rowSpacing: CGFloat
+    let showFilters: Bool
+    let searchStyle: SearchStyle
+    let spec: LayoutSpec
+
+    func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
+        mono ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+             : NSFont.systemFont(ofSize: size, weight: weight)
+    }
+}
+
+enum Themes {
+    static let key = "turbofind.theme"
+
+    static let all: [Theme] = [
+        // 1. The original.
+        Theme(id: "default", name: "Default (Dark)", dark: true,
+              popover: NSSize(width: 600, height: 500),
+              bg: NSColor(0x0f1115), fieldBg: NSColor(0x171a21), fieldText: .white,
+              accent: NSColor(0x3b82f6), title: NSColor(0xe8eaed),
+              subtitle: NSColor(0x9aa0aa), faint: NSColor(0x6b7280),
+              mono: false, titleSize: 13, pathSize: 11, searchSize: 18,
+              rowHeight: 52, rowSpacing: 3, showFilters: true, searchStyle: .rounded,
+              spec: LayoutSpec(showIcon: true, iconSize: 15, datePos: .leftColumn,
+                               dateFmt: .long, showPath: true, inline: false,
+                               showScore: true, showBadge: true)),
+
+        // 2. Light, dense, single-line — like a mail list.
+        Theme(id: "paper", name: "Paper (Light)", dark: false,
+              popover: NSSize(width: 560, height: 520),
+              bg: NSColor(0xfaf9f6), fieldBg: NSColor(0xffffff), fieldText: NSColor(0x1c1917),
+              accent: NSColor(0xc2410c), title: NSColor(0x1c1917),
+              subtitle: NSColor(0x78716c), faint: NSColor(0xa8a29e),
+              mono: false, titleSize: 13, pathSize: 11, searchSize: 17,
+              rowHeight: 30, rowSpacing: 1, showFilters: true, searchStyle: .underline,
+              spec: LayoutSpec(showIcon: true, iconSize: 13, datePos: .right,
+                               dateFmt: .short, showPath: true, inline: true,
+                               showScore: false, showBadge: false)),
+
+        // 3. Spotlight — big centred field, icon-forward, no score/date.
+        Theme(id: "spotlight", name: "Spotlight", dark: true,
+              popover: NSSize(width: 680, height: 460),
+              bg: NSColor(0x1c1c1e), fieldBg: NSColor(0x2c2c2e), fieldText: .white,
+              accent: NSColor(0x0a84ff), title: .white,
+              subtitle: NSColor(0x98989d), faint: NSColor(0x636366),
+              mono: false, titleSize: 16, pathSize: 11, searchSize: 23,
+              rowHeight: 56, rowSpacing: 4, showFilters: false, searchStyle: .centered,
+              spec: LayoutSpec(showIcon: true, iconSize: 28, datePos: .hidden,
+                               showPath: true, inline: false,
+                               showScore: false, showBadge: false)),
+
+        // 4. Terminal — monospace, green-on-black, ultra-dense, [iso] dates.
+        Theme(id: "terminal", name: "Terminal", dark: true,
+              popover: NSSize(width: 640, height: 480),
+              bg: NSColor(0x03120a), fieldBg: NSColor(0x041c0f), fieldText: NSColor(0x4ade80),
+              accent: NSColor(0x22c55e), title: NSColor(0x4ade80),
+              subtitle: NSColor(0x16a34a), faint: NSColor(0x166534),
+              mono: true, titleSize: 12, pathSize: 11, searchSize: 14,
+              rowHeight: 22, rowSpacing: 0, showFilters: true, searchStyle: .prompt,
+              spec: LayoutSpec(showIcon: false, datePos: .leftColumn, dateFmt: .isoBracket,
+                               showPath: true, inline: true,
+                               showScore: true, showBadge: false)),
+
+        // 5. Cards — roomy, purple accent, date pill, big rows.
+        Theme(id: "cards", name: "Cards", dark: true,
+              popover: NSSize(width: 640, height: 560),
+              bg: NSColor(0x111317), fieldBg: NSColor(0x1b1f27), fieldText: .white,
+              accent: NSColor(0xa855f7), title: NSColor(0xf3f4f6),
+              subtitle: NSColor(0x9ca3af), faint: NSColor(0x6b7280),
+              mono: false, titleSize: 14, pathSize: 11, searchSize: 18,
+              rowHeight: 66, rowSpacing: 6, showFilters: true, searchStyle: .pill,
+              spec: LayoutSpec(showIcon: true, iconSize: 24, datePos: .right,
+                               dateFmt: .short, datePill: true, showPath: true,
+                               inline: false, showScore: true, showBadge: true)),
+
+        // 6. Minimal — light, centred, filename only, lots of air.
+        Theme(id: "minimal", name: "Minimal", dark: false,
+              popover: NSSize(width: 520, height: 440),
+              bg: NSColor(0xffffff), fieldBg: NSColor(0xf3f4f6), fieldText: NSColor(0x111827),
+              accent: NSColor(0x111827), title: NSColor(0x111827),
+              subtitle: NSColor(0x6b7280), faint: NSColor(0xd1d5db),
+              mono: false, titleSize: 16, pathSize: 11, searchSize: 21,
+              rowHeight: 40, rowSpacing: 2, showFilters: false, searchStyle: .centered,
+              spec: LayoutSpec(showIcon: false, datePos: .hidden,
+                               showPath: false, showScore: false, showBadge: false,
+                               nameOnly: true, centered: true)),
+    ]
+
+    static func byId(_ id: String) -> Theme? { all.first { $0.id == id } }
+    static func current() -> Theme {
+        byId(UserDefaults.standard.string(forKey: key) ?? "default") ?? all[0]
+    }
+}
+
+// ============================================================================
+// Results table — routes Space/Enter/Esc/Delete and "type to jump back".
 // ============================================================================
 final class ResultsTableView: NSTableView {
     var onSpace:   (() -> Void)?
     var onEnter:   (() -> Void)?
     var onEscape:  (() -> Void)?
-    var onUpAtTop: (() -> Void)?          // Up arrow while already on the first row
-    var onDelete:  (() -> Void)?          // delete/backspace — back to the field, trim
-    var onType:    ((String) -> Void)?    // a printable key — hand back to the field
+    var onUpAtTop: (() -> Void)?
+    var onDelete:  (() -> Void)?
+    var onType:    ((String) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -67,16 +207,13 @@ final class ResultsTableView: NSTableView {
         case 36, 76:      onEnter?();  return          // return -> reveal in Finder
         case 53:          onEscape?(); return          // esc
         case 51:          onDelete?(); return          // delete -> edit the query
-        case 125, 123, 124:                             // down / left / right
-            super.keyDown(with: event); return          // let the table navigate
-        case 126:                                       // up arrow
+        case 125, 123, 124:
+            super.keyDown(with: event); return          // down/left/right -> navigate
+        case 126:
             if selectedRow <= 0 { onUpAtTop?(); return }
-            super.keyDown(with: event); return          // otherwise move the selection
+            super.keyDown(with: event); return          // up -> move selection
         default: break
         }
-        // A printable character returns you to typing (like Finder). Exclude the
-        // function-key private-use area (arrows etc. report U+F70x) so navigation
-        // keys are never mistaken for text.
         if let chars = event.characters, chars.count == 1,
            let scalar = chars.unicodeScalars.first,
            scalar.value < 0xF700,
@@ -87,80 +224,169 @@ final class ResultsTableView: NSTableView {
     }
 }
 
+// Themed selection highlight (accent-tinted rounded fill).
+final class ThemedRowView: NSTableRowView {
+    var accent: NSColor = .selectedContentBackgroundColor
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        accent.withAlphaComponent(0.22).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1),
+                     xRadius: 7, yRadius: 7).fill()
+    }
+}
+
 // ============================================================================
-// One row view: [ date ] [icon] [ name / path ] [score], built with explicit
-// constraints so the name/path truncate cleanly inside the popover width.
+// One result row — rebuilt per configure from the active theme's LayoutSpec,
+// so changing theme genuinely changes the row layout, not just the colours.
 // ============================================================================
 final class ResultRow: NSView {
-    private let date  = ResultRow.label(size: 11, mono: true,  color: .tertiaryLabelColor)
-    private let icon  = ResultRow.label(size: 15, mono: false, color: .labelColor)
-    private let name  = ResultRow.label(size: 13, mono: false, color: .labelColor)
-    private let path  = ResultRow.label(size: 11, mono: false, color: .secondaryLabelColor)
-    private let badge   = ResultRow.label(size: 9,  mono: false, color: .systemBlue)
-    private let score = ResultRow.label(size: 11, mono: true,  color: .tertiaryLabelColor)
+    private var stack: NSView?
 
-    private static func label(size: CGFloat, mono: Bool, color: NSColor) -> NSTextField {
+    private static let longDF:  DateFormatter = { let f = DateFormatter(); f.dateFormat = "d MMM yyyy"; return f }()
+    private static let shortDF: DateFormatter = { let f = DateFormatter(); f.dateFormat = "d MMM yy";  return f }()
+    private static let isoDF:   DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+
+    private func label(_ font: NSFont, _ color: NSColor, align: NSTextAlignment = .left) -> NSTextField {
         let l = NSTextField(labelWithString: "")
-        l.font = mono ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                      : NSFont.systemFont(ofSize: size)
-        l.textColor = color
+        l.font = font; l.textColor = color; l.alignment = align
         l.lineBreakMode = .byTruncatingTail
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        name.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        date.alignment = .right
-        score.alignment = .right
-        for v in [date, icon, name, path, badge, score] { addSubview(v) }
-        // Let name/path shrink and truncate instead of forcing the row wider.
-        for v in [name, path] { v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal) }
-        badge.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-
-        NSLayoutConstraint.activate([
-            date.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            date.centerYAnchor.constraint(equalTo: centerYAnchor),
-            date.widthAnchor.constraint(equalToConstant: 58),
-
-            icon.leadingAnchor.constraint(equalTo: date.trailingAnchor, constant: 6),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 22),
-
-            score.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            score.centerYAnchor.constraint(equalTo: centerYAnchor),
-            score.widthAnchor.constraint(equalToConstant: 42),
-
-            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            name.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-
-            badge.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 6),
-            badge.centerYAnchor.constraint(equalTo: name.centerYAnchor),
-            badge.trailingAnchor.constraint(lessThanOrEqualTo: score.leadingAnchor, constant: -8),
-
-            path.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            path.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
-            path.trailingAnchor.constraint(equalTo: score.leadingAnchor, constant: -8),
-        ])
-        // name's right edge must also stay clear of the score column.
-        name.trailingAnchor.constraint(lessThanOrEqualTo: score.leadingAnchor, constant: -8).isActive = true
+    private func dateString(_ ts: Double, _ fmt: DateFmt) -> String {
+        guard ts > 0 else { return fmt == .isoBracket ? "[ ———— ]" : "—" }
+        let d = Date(timeIntervalSince1970: ts)
+        switch fmt {
+        case .long:       return ResultRow.longDF.string(from: d)
+        case .short:      return ResultRow.shortDF.string(from: d)
+        case .isoBracket: return "[\(ResultRow.isoDF.string(from: d))]"
+        }
     }
-    required init?(coder: NSCoder) { fatalError() }
 
-    private static let df: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "d MMM yyyy"; return f
-    }()
+    func configure(with h: Hit, theme: Theme) {
+        stack?.removeFromSuperview()
+        let s = theme.spec
+        let nameStr = (h.path as NSString).lastPathComponent
+        let dirStr  = (h.path as NSString).deletingLastPathComponent
 
-    func configure(with h: Hit) {
-        let n = (h.path as NSString).lastPathComponent
-        name.stringValue = n
-        path.stringValue = (h.path as NSString).deletingLastPathComponent
-        icon.stringValue = ResultRow.icon(for: h.path)
-        score.stringValue = String(format: "%.2f", h.score)
-        date.stringValue = h.added > 0 ? ResultRow.df.string(from: Date(timeIntervalSince1970: h.added)) : "—"
+        // --- minimal / name-only, centred -----------------------------------
+        if s.nameOnly {
+            let name = label(theme.font(theme.titleSize, .medium),
+                             h.exists ? theme.title : theme.faint, align: .center)
+            name.stringValue = nameStr
+            addSubview(name); stack = name
+            NSLayoutConstraint.activate([
+                name.centerYAnchor.constraint(equalTo: centerYAnchor),
+                name.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+                name.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+                name.centerXAnchor.constraint(equalTo: centerXAnchor),
+            ])
+            return
+        }
+
+        // --- build the labels -----------------------------------------------
+        let name = label(theme.font(theme.titleSize, .semibold), h.exists ? theme.title : theme.faint)
+        name.stringValue = nameStr
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let path = label(theme.font(theme.pathSize), theme.subtitle)
+        path.stringValue = dirStr
+        path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let badge = label(theme.font(9, .semibold), theme.accent)
         badge.stringValue = h.filename_match ? "name" : ""
-        name.textColor = h.exists ? .labelColor : .tertiaryLabelColor
+
+        let icon = label(NSFont.systemFont(ofSize: s.iconSize), theme.title)
+        icon.stringValue = ResultRow.icon(for: h.path)
+
+        let score = label(theme.font(theme.pathSize), theme.faint, align: .right)
+        score.stringValue = String(format: "%.2f", h.score)
+
+        let date = label(theme.font(theme.pathSize), theme.faint,
+                         align: s.datePos == .right ? .right : .left)
+        date.stringValue = dateString(h.added, s.dateFmt)
+        if s.datePill {
+            // Paint the pill on the layer (NOT the cell background) so cornerRadius
+            // actually clips — a cell fill ignores the rounded layer.
+            date.textColor = theme.subtitle
+            date.alignment = .center
+            date.wantsLayer = true
+            date.drawsBackground = false
+            date.layer?.backgroundColor = theme.faint.withAlphaComponent(0.16).cgColor
+            date.layer?.cornerRadius = 9
+            date.layer?.masksToBounds = true
+            date.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        }
+
+        // --- assemble the horizontal stack ----------------------------------
+        let h0 = NSStackView()
+        h0.orientation = .horizontal
+        h0.alignment = .centerY
+        h0.spacing = max(theme.rowSpacing + 4, 6)
+        h0.translatesAutoresizingMaskIntoConstraints = false
+        h0.detachesHiddenViews = true
+
+        if s.datePos == .leftColumn {
+            date.widthAnchor.constraint(equalToConstant: theme.mono ? 92 : 60).isActive = true
+            h0.addArrangedSubview(date)
+        }
+        if s.showIcon {
+            icon.widthAnchor.constraint(equalToConstant: s.iconSize + 8).isActive = true
+            h0.addArrangedSubview(icon)
+        }
+
+        // middle: stacked (name over path) or inline (name + path one line)
+        let middle: NSView
+        if s.inline {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.alignment = .firstBaseline
+            row.spacing = 8
+            row.addArrangedSubview(name)
+            if s.showBadge { row.addArrangedSubview(badge) }
+            if s.showPath { row.addArrangedSubview(path) }
+            middle = row
+        } else {
+            let top = NSStackView()
+            top.orientation = .horizontal
+            top.alignment = .firstBaseline
+            top.spacing = 6
+            top.addArrangedSubview(name)
+            if s.showBadge { top.addArrangedSubview(badge) }
+            if s.showPath {
+                let v = NSStackView()
+                v.orientation = .vertical
+                v.alignment = .leading
+                v.spacing = 1
+                v.addArrangedSubview(top)
+                v.addArrangedSubview(path)
+                middle = v
+            } else {
+                middle = top
+            }
+        }
+        middle.translatesAutoresizingMaskIntoConstraints = false
+        middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        h0.addArrangedSubview(middle)
+
+        if s.datePos == .right {
+            if s.datePill { date.widthAnchor.constraint(greaterThanOrEqualToConstant: 70).isActive = true }
+            h0.addArrangedSubview(date)
+        }
+        if s.showScore {
+            score.widthAnchor.constraint(equalToConstant: 42).isActive = true
+            h0.addArrangedSubview(score)
+        }
+
+        addSubview(h0); stack = h0
+        let lead: CGFloat = 12, trail: CGFloat = 12
+        NSLayoutConstraint.activate([
+            h0.leadingAnchor.constraint(equalTo: leadingAnchor, constant: lead),
+            h0.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -trail),
+            h0.centerYAnchor.constraint(equalTo: centerYAnchor),
+            h0.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 2),
+        ])
     }
 
     static func icon(for path: String) -> String {
@@ -174,71 +400,86 @@ final class ResultRow: NSView {
 }
 
 // ============================================================================
-// The search view controller — owns the field, type filters, and results table
-// and talks to serve.py's JSON API.
+// Search view controller — owns the field, type filters and results table,
+// and rebuilds its whole layout when the theme changes.
 // ============================================================================
 final class SearchViewController: NSViewController, NSTableViewDataSource,
                                   NSTableViewDelegate, NSTextFieldDelegate {
-    private let field  = NSTextField()
-    private let scroll = NSScrollView()
-    private let table  = ResultsTableView()
-    private let status = NSTextField(labelWithString: "")
+    var theme: Theme = Themes.current()
+
+    private var field  = NSTextField()
+    private var scroll = NSScrollView()
+    private var table  = ResultsTableView()
+    private var status = NSTextField(labelWithString: "")
     private var filters: [NSButton] = []
 
     private var hits: [Hit] = []
     private var debounce: Timer?
-    private var seq = 0                    // request id — drop stale responses
+    private var seq = 0
     private let session = URLSession(configuration: .ephemeral)
 
     private let kinds = [("text", "Text"), ("pdf", "PDF"), ("image", "Images"), ("video", "Video")]
 
     override func loadView() {
-        view = NSView(frame: NSRect(origin: .zero, size: Cfg.popover))
+        view = NSView(frame: NSRect(origin: .zero, size: theme.popover))
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        buildUI()
+    }
 
-        field.placeholderString = "Search by meaning…"
-        field.font = NSFont.systemFont(ofSize: 18)
-        field.bezelStyle = .roundedBezel
-        field.focusRingType = .none
+    /// Apply a new theme: rebuild the entire layout, keep the query + results.
+    func apply(theme: Theme) {
+        let q = field.stringValue
+        self.theme = theme
+        buildUI()
+        field.stringValue = q
+        table.reloadData()
+        if !hits.isEmpty { table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
+    }
+
+    // -- layout (theme-driven) ----------------------------------------------
+
+    private func buildUI() {
+        debounce?.invalidate(); debounce = nil   // no timer from the old UI fires post-rebuild
+        view.subviews.forEach { $0.removeFromSuperview() }
+        filters.removeAll()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = theme.bg.cgColor
+
+        field = NSTextField()
+        field.placeholderString = theme.searchStyle == .prompt ? "› search by meaning…" : "Search by meaning…"
+        field.font = theme.font(theme.searchSize)
+        field.textColor = theme.fieldText
         field.delegate = self
+        field.focusRingType = .none
         field.translatesAutoresizingMaskIntoConstraints = false
+        field.alignment = (theme.searchStyle == .centered) ? .center : .left
+        styleField()
 
-        let filterRow = NSStackView()
-        filterRow.orientation = .horizontal
-        filterRow.spacing = 12
-        filterRow.translatesAutoresizingMaskIntoConstraints = false
-        for (val, title) in kinds {
-            let b = NSButton(checkboxWithTitle: title, target: self, action: #selector(filtersChanged))
-            b.state = .on
-            b.identifier = NSUserInterfaceItemIdentifier(val)
-            b.font = NSFont.systemFont(ofSize: 12)
-            filters.append(b)
-            filterRow.addArrangedSubview(b)
-        }
-
-        status.font = NSFont.systemFont(ofSize: 11)
-        status.textColor = .tertiaryLabelColor
-        status.stringValue = "Type · ↓ into results · Space = Quick Look · Enter = open in Finder"
+        status = NSTextField(labelWithString: theme.spec.showScore
+            ? "Type · ↓ into results · Space = Quick Look · Enter = open in Finder"
+            : "Type · ↓ into results · Enter = open in Finder")
+        status.font = theme.font(11)
+        status.textColor = theme.faint
         status.translatesAutoresizingMaskIntoConstraints = false
 
-        // results table
+        // results table (fresh each rebuild)
+        table = ResultsTableView()
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
         col.resizingMask = .autoresizingMask
         table.addTableColumn(col)
         table.headerView = nil
         table.backgroundColor = .clear
-        table.intercellSpacing = NSSize(width: 0, height: 3)
-        table.rowHeight = 52
+        table.intercellSpacing = NSSize(width: 0, height: theme.rowSpacing)
+        table.rowHeight = theme.rowHeight
         table.selectionHighlightStyle = .regular
         table.dataSource = self
         table.delegate = self
         table.target = self
         table.doubleAction = #selector(onDoubleClick)
         if #available(macOS 11.0, *) { table.style = .plain }
-
         table.onSpace   = { [weak self] in self?.preview(self?.table.selectedRow ?? -1) }
         table.onEnter   = { [weak self] in self?.reveal(self?.table.selectedRow ?? -1) }
         table.onEscape  = { [weak self] in self?.focusSearch() }
@@ -246,6 +487,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         table.onDelete  = { [weak self] in self?.deleteBackToField() }
         table.onType    = { [weak self] s in self?.typeIntoField(s) }
 
+        scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
@@ -253,28 +495,81 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(field)
-        view.addSubview(filterRow)
         view.addSubview(status)
         view.addSubview(scroll)
 
         let m: CGFloat = 14
-        NSLayoutConstraint.activate([
+        var cons: [NSLayoutConstraint] = [
             field.topAnchor.constraint(equalTo: view.topAnchor, constant: m),
             field.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: m),
             field.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -m),
-
-            filterRow.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
-            filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: m),
-
-            status.centerYAnchor.constraint(equalTo: filterRow.centerYAnchor),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -m),
-            status.leadingAnchor.constraint(greaterThanOrEqualTo: filterRow.trailingAnchor, constant: 10),
-
-            scroll.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: m / 2),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -m / 2),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -m / 2),
-        ])
+        ]
+        if theme.searchStyle == .pill || theme.searchStyle == .centered {
+            cons.append(field.heightAnchor.constraint(equalToConstant: 44))
+        }
+
+        // Filter row only when the theme wants it; otherwise the table rises up.
+        if theme.showFilters {
+            let filterRow = NSStackView()
+            filterRow.orientation = .horizontal
+            filterRow.spacing = 12
+            filterRow.translatesAutoresizingMaskIntoConstraints = false
+            for (val, title) in kinds {
+                let b = NSButton(checkboxWithTitle: title, target: self, action: #selector(filtersChanged))
+                b.state = .on
+                b.identifier = NSUserInterfaceItemIdentifier(val)
+                b.font = theme.font(12)
+                if theme.mono { b.contentTintColor = theme.accent }
+                filters.append(b)
+                filterRow.addArrangedSubview(b)
+            }
+            view.addSubview(filterRow)
+            cons += [
+                filterRow.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
+                filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: m),
+                status.centerYAnchor.constraint(equalTo: filterRow.centerYAnchor),
+                status.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -m),
+                status.leadingAnchor.constraint(greaterThanOrEqualTo: filterRow.trailingAnchor, constant: 10),
+                scroll.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 10),
+            ]
+        } else {
+            cons += [
+                status.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 8),
+                status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: m),
+                status.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -m),
+                scroll.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 8),
+            ]
+        }
+        NSLayoutConstraint.activate(cons)
+    }
+
+    private func styleField() {
+        field.wantsLayer = true
+        switch theme.searchStyle {
+        case .rounded:
+            // System bezel rounds itself — let the cell paint the background.
+            field.bezelStyle = .roundedBezel
+            field.isBezeled = true
+            field.drawsBackground = true
+            field.backgroundColor = theme.fieldBg
+        case .pill, .underline, .prompt, .centered:
+            // Bezel-less: paint the fill on the LAYER (not the cell) and clip with
+            // masksToBounds, so the cornerRadius actually rounds the corners. A cell
+            // background ignores the rounded layer and renders square.
+            field.isBezeled = false
+            field.drawsBackground = false
+            field.layer?.backgroundColor = theme.fieldBg.cgColor
+            field.layer?.masksToBounds = true
+            field.layer?.cornerRadius = theme.searchStyle == .pill ? 22
+                : theme.searchStyle == .centered ? 12 : 6
+            if theme.searchStyle == .underline || theme.searchStyle == .prompt {
+                field.layer?.borderWidth = 1
+                field.layer?.borderColor = theme.accent.withAlphaComponent(0.5).cgColor
+            }
+        }
     }
 
     // -- focus --------------------------------------------------------------
@@ -289,8 +584,6 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         moveCaretToEndAndSearch()
     }
 
-    /// Delete/backspace while in the results list: trim the query and jump back
-    /// to the field, the way Finder/Spotlight let you fix a search mid-list.
     private func deleteBackToField() {
         if !field.stringValue.isEmpty { field.stringValue.removeLast() }
         moveCaretToEndAndSearch()
@@ -298,8 +591,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
 
     private func moveCaretToEndAndSearch() {
         view.window?.makeFirstResponder(field)
-        // NSRange offsets are UTF-16 units, not grapheme clusters — use NSString length.
-        let end = (field.stringValue as NSString).length
+        let end = (field.stringValue as NSString).length    // UTF-16 units
         field.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
         schedule()
     }
@@ -339,15 +631,16 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     }
 
     private func selectedTypes() -> [String] {
+        guard !filters.isEmpty else { return [] }
         let on = filters.filter { $0.state == .on }.compactMap { $0.identifier?.rawValue }
-        return on.count == filters.count ? [] : on     // all checked => no filter
+        return on.count == filters.count ? [] : on
     }
 
     private func runSearch() {
         let q = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else {
-            seq += 1                     // invalidate any in-flight response so a late
-            hits = []; table.reloadData() // result can't repopulate the cleared list
+            seq += 1
+            hits = []; table.reloadData()
             status.stringValue = ""
             return
         }
@@ -368,7 +661,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
                 return (try? JSONDecoder().decode([Hit].self, from: data)) ?? []
             }()
             DispatchQueue.main.async {
-                guard let self = self, mine == self.seq else { return }   // drop stale
+                guard let self = self, mine == self.seq else { return }
                 if err != nil {
                     self.status.stringValue = "engine starting… keep typing"
                     return
@@ -388,13 +681,10 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     // -- reveal / preview ---------------------------------------------------
 
     private func hit(_ i: Int) -> Hit? { hits.indices.contains(i) ? hits[i] : nil }
-
     private func reveal(_ i: Int)  { ping("/reveal",  hit(i)?.path) }
     private func preview(_ i: Int) { ping("/preview", hit(i)?.path) }
-
     @objc private func onDoubleClick() { reveal(table.selectedRow) }
 
-    /// Fire-and-forget GET to a serve.py action endpoint with a path param.
     private func ping(_ route: String, _ path: String?) {
         guard let path = path,
               var comps = URLComponents(string: Cfg.serverURL + route) else { return }
@@ -407,18 +697,28 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
 
     func numberOfRows(in tableView: NSTableView) -> Int { hits.count }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let id = NSUserInterfaceItemIdentifier("themedrow")
+        let rv = (tableView.makeView(withIdentifier: id, owner: self) as? ThemedRowView) ?? {
+            let r = ThemedRowView(); r.identifier = id; return r
+        }()
+        rv.accent = theme.accent
+        return rv
+    }
+
     func tableView(_ tableView: NSTableView, viewFor col: NSTableColumn?, row: Int) -> NSView? {
-        let id = NSUserInterfaceItemIdentifier("row")
+        // Reuse keyed by theme so a cached row from another layout is never reused.
+        let id = NSUserInterfaceItemIdentifier("row-\(theme.id)")
         let v = (tableView.makeView(withIdentifier: id, owner: self) as? ResultRow) ?? {
             let r = ResultRow(); r.identifier = id; return r
         }()
-        v.configure(with: hits[row])
+        v.configure(with: hits[row], theme: theme)
         return v
     }
 }
 
 // ============================================================================
-// App delegate — menu-bar item, popover, hot-key, engine lifecycle, updates.
+// App delegate — menu-bar item, popover, hot-key, engine lifecycle, themes.
 // ============================================================================
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
@@ -426,17 +726,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let searchVC = SearchViewController()
     private var server: Process?
     private var hotKeyRef: EventHotKeyRef?
+    private var theme = Themes.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        NSApp.setActivationPolicy(.accessory)         // menu-bar only, no Dock icon
-        startServer()                                 // warm the engine in the background
+        NSApp.setActivationPolicy(.accessory)
+        startServer()
+        searchVC.theme = theme
         buildStatusItem()
         buildPopover()
-        registerHotKey()                              // Option+F summons the panel
+        registerHotKey()
     }
 
-    /// Option+F anywhere -> toggle the search popover. Carbon RegisterEventHotKey
-    /// consumes the chord system-wide and needs no Accessibility permission.
     private func registerHotKey() {
         tfHotKeyAction = { [weak self] in
             guard let self else { return }
@@ -456,40 +756,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
         button.image = menuBarIcon()
-        button.image?.isTemplate = true               // adapts to light/dark menu bar
+        button.image?.isTemplate = true
         button.imageScaling = .scaleProportionallyDown
         button.target = self
         button.action = #selector(statusClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    /// Load the bolt mark from assets (SVG, macOS 13+); fall back to an SF Symbol.
     private func menuBarIcon() -> NSImage {
         let path = "\(Cfg.repoDir)/assets/logo-black.svg"
         if let img = NSImage(contentsOfFile: path) {
             img.size = NSSize(width: 18, height: 18)
             return img
         }
-        return NSImage(systemSymbolName: "bolt.fill",
-                      accessibilityDescription: "TurboFind") ?? NSImage()
+        return NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "TurboFind") ?? NSImage()
     }
 
     // -- popover ------------------------------------------------------------
 
     private func buildPopover() {
         popover.contentViewController = searchVC
-        popover.contentSize = Cfg.popover
-        popover.behavior = .transient                 // closes when you click away
-        popover.animates = false                       // instant (Spotlight-like) + lets
-                                                       // popoverDidShow fire before keystrokes
+        popover.contentSize = theme.popover
+        popover.behavior = .transient
+        popover.animates = false
+        popover.appearance = NSAppearance(named: theme.dark ? .darkAqua : .aqua)
         popover.delegate = self
     }
 
     @objc private func statusClicked(_ sender: Any?) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            showRightClickMenu()
-            return
-        }
+        if NSApp.currentEvent?.type == .rightMouseUp { showRightClickMenu(); return }
         if popover.isShown { popover.performClose(sender) } else { showPopover() }
     }
 
@@ -500,10 +795,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         focusSearchField()
     }
 
-    /// Put the cursor straight in the search box so you can type immediately.
-    /// popoverDidShow is the authoritative moment (window is key by then) — it
-    /// sets first responder synchronously, before any keystroke can arrive. This
-    /// next-runloop pass is just a fast fallback for the already-key case.
     private func focusSearchField() {
         DispatchQueue.main.async { [weak self] in
             self?.popover.contentViewController?.view.window?.makeKey()
@@ -516,25 +807,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         searchVC.focusSearch()
     }
 
-    // -- right-click menu (update / reindex / quit) -------------------------
+    // -- right-click menu ---------------------------------------------------
 
     private func showRightClickMenu() {
         let menu = NSMenu()
+        let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        themeItem.submenu = themeMenu()
+        menu.addItem(themeItem)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Update TurboFind…", action: #selector(update), keyEquivalent: "")
         menu.addItem(withTitle: "Re-index home (~)…", action: #selector(reindex), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit TurboFind", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
-        statusItem.button?.performClick(nil)          // show it under the item
-        statusItem.menu = nil                         // reset so left-click opens the popover
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    private func themeMenu() -> NSMenu {
+        let m = NSMenu()
+        for t in Themes.all {
+            let it = NSMenuItem(title: t.name, action: #selector(pickTheme(_:)), keyEquivalent: "")
+            it.representedObject = t.id
+            it.state = (t.id == theme.id) ? .on : .off
+            it.target = self
+            m.addItem(it)
+        }
+        return m
+    }
+
+    @objc private func pickTheme(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let t = Themes.byId(id) else { return }
+        theme = t
+        UserDefaults.standard.set(t.id, forKey: Themes.key)
+        popover.contentSize = t.popover
+        popover.appearance = NSAppearance(named: t.dark ? .darkAqua : .aqua)
+        searchVC.apply(theme: t)
+        if popover.isShown { focusSearchField() }
     }
 
     // -- self-update --------------------------------------------------------
 
-    /// `git pull` the repo, then bounce serve.py so the new Python code is live.
-    /// Python changes (serve/ingest/search/shared) need no rebuild — the app
-    /// just relaunches its engine child. Only changes to THIS Swift app require
-    /// re-running build.sh (noted in the alert when the app sources moved).
     @objc private func update() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
@@ -554,16 +867,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                          + "`cd ~/turbofind/menubar && ./build.sh` and reopen to get those."
                 }
                 self.showAlert("TurboFind", msg)
-                self.server?.terminate()                  // drop the old engine
+                self.server?.terminate()
                 self.server = nil
-                self.startServer()                        // new code, fresh process
+                self.startServer()
             }
         }
     }
 
-    /// Run `git pull --ff-only` in the repo. Returns (success, combined output,
-    /// whether any menubar/ source changed). Reads the pipe before waiting so a
-    /// large output can't fill the buffer and deadlock the child.
     private func gitPull() -> (Bool, String, Bool) {
         let before = self.gitHead()
         let p = Process()
@@ -610,7 +920,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         p.currentDirectoryURL = URL(fileURLWithPath: Cfg.repoDir)
         p.arguments = ["ingest.py", "--once", NSHomeDirectory()]
         p.environment = serverEnv()
-        try? p.run()                                  // fire-and-forget; the daemon would be nicer
+        try? p.run()
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
@@ -632,8 +942,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do {
-            try p.run()                               // if 8765 is already taken it exits;
-            server = p                                // the existing server is used instead.
+            try p.run()
+            server = p
         } catch {
             NSLog("[TurboFind] could not launch serve.py: \(error)")
         }
@@ -641,7 +951,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationWillTerminate(_ note: Notification) {
         if let hk = hotKeyRef { UnregisterEventHotKey(hk) }
-        server?.terminate()                           // stop the engine we started
+        server?.terminate()
     }
 }
 
