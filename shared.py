@@ -235,6 +235,7 @@ class PathMapping:
         self._path = path
         self._lock = threading.RLock()
         self._entries: Dict[int, str] = {}
+        self._mtimes: Dict[int, float] = {}      # id -> file st_mtime when indexed
 
     # -- persistence --------------------------------------------------------
 
@@ -243,6 +244,7 @@ class PathMapping:
         is logged and treated as empty rather than crashing the caller."""
         with self._lock:
             self._entries = {}
+            self._mtimes = {}
             if not self._path.exists():
                 return self
             try:
@@ -261,6 +263,11 @@ class PathMapping:
                     self._entries[int(key)] = str(value)
                 except (TypeError, ValueError):
                     log.warning("dropping malformed mapping entry: %r -> %r", key, value)
+            for key, value in (raw.get("mtimes", {}) if isinstance(raw, dict) else {}).items():
+                try:
+                    self._mtimes[int(key)] = float(value)
+                except (TypeError, ValueError):
+                    pass
             log.debug("loaded %d path mappings", len(self._entries))
             return self
 
@@ -270,6 +277,7 @@ class PathMapping:
             payload = {
                 "version": MAPPING_SCHEMA_VERSION,
                 "entries": {str(k): v for k, v in self._entries.items()},
+                "mtimes": {str(k): v for k, v in self._mtimes.items()},
             }
             self._path.parent.mkdir(parents=True, exist_ok=True)
             # Write to a temp file in the same dir, then atomically swap it in.
@@ -291,17 +299,23 @@ class PathMapping:
 
     # -- accessors (all lock-guarded) --------------------------------------
 
-    def put(self, file_id: int, path: str) -> None:
+    def put(self, file_id: int, path: str, mtime: float = 0.0) -> None:
         with self._lock:
             self._entries[file_id] = path
+            self._mtimes[file_id] = mtime
 
     def remove(self, file_id: int) -> Optional[str]:
         with self._lock:
+            self._mtimes.pop(file_id, None)
             return self._entries.pop(file_id, None)
 
     def get(self, file_id: int) -> Optional[str]:
         with self._lock:
             return self._entries.get(file_id)
+
+    def get_mtime(self, file_id: int) -> float:
+        with self._lock:
+            return self._mtimes.get(file_id, 0.0)
 
     def contains(self, file_id: int) -> bool:
         with self._lock:
@@ -421,7 +435,9 @@ class Embedder:
     def embed(self, texts: List[str]) -> np.ndarray:
         if not texts:
             return np.empty((0, self._lane.dim), dtype=np.float32)
-        return _finalize(self._ensure_backend().encode_text(texts), self._lane.dim)
+        with _INFER_LOCK:                        # serialize all model inference
+            raw = self._ensure_backend().encode_text(texts)
+        return _finalize(raw, self._lane.dim)
 
     def embed_one(self, text: str) -> np.ndarray:
         """Embed a single string -> (1, dim), ready for `index.search` (2-D)."""
@@ -433,7 +449,15 @@ class Embedder:
             raise RuntimeError("image embedding requires the CLIP (media) lane")
         if not images:
             return np.empty((0, self._lane.dim), dtype=np.float32)
-        return _finalize(self._ensure_backend().encode_images(images), self._lane.dim)
+        with _INFER_LOCK:                        # serialize all model inference
+            raw = self._ensure_backend().encode_images(images)
+        return _finalize(raw, self._lane.dim)
+
+
+# Serializes ALL model inference process-wide. Searches (serve) and the live
+# indexer (watcher) share one embedder; concurrent torch forward passes are not
+# safe, so every encode goes through this lock. Each call is sub-second.
+_INFER_LOCK = threading.Lock()
 
 
 # One embedder per lane, process-wide, so each model loads at most once (critical

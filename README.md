@@ -42,8 +42,9 @@ Prefer the terminal? `python search.py "my tax documents"`.
 - Point it at a smaller folder to start if you like — but **not an empty one**:
   semantic search needs a real corpus (a near-empty `~/Documents`, common with
   iCloud, just returns the same few results every query).
-- New files later: re-run the `ingest.py --once …` line, or run the live daemon
-  `python ingest.py ~` to auto-index as files change.
+- New files later index themselves: `serve.py` (and the menu-bar app) watches
+  your home and auto-indexes new/changed/deleted files while it runs — no
+  re-run needed. Each result shows when the file was added to your Mac.
 - **Video** needs the ffmpeg binary: `brew install ffmpeg`.
 
 > macOS · Apple Silicon. First run pulls the embedding models from HuggingFace
@@ -56,7 +57,7 @@ Prefer the terminal? `python search.py "my tax documents"`.
 | `shared.py` | Config + modality toggle, paths, id hashing, the `id -> path` sidecar, the modality-aware embedder (shared singleton), and turbovec helpers. |
 | `ingest.py` | Background `watchdog` daemon — keeps the index in sync (create/modify/delete/move), media pipeline, low-priority initial scan. |
 | `search.py` | Instant CLI — **hybrid** (semantic + lexical) ranking; prints / `--json` top-k. |
-| `serve.py` | Optional warm localhost HTTP server (model stays loaded) for the GUI. Loopback-only + Host-guarded; no CORS. |
+| `serve.py` | Warm localhost HTTP server (model stays loaded) for the GUI. Also **live-indexes** the watched tree in-process (new/changed/deleted files), so the index never goes stale while it runs. Loopback-only + Host-guarded; no CORS. |
 | `spotlight.py` | Best-effort bridge mirroring indexed items into native macOS CoreSpotlight. |
 | `Launcher.swift` | Spotlight/Raycast-style floating search bar (Option+Space) that drives the backend and reveals files in Finder. |
 

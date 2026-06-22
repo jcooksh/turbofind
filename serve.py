@@ -53,8 +53,8 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  header svg{width:22px;height:22px;flex:none}
  header b{font-size:12px;letter-spacing:.2em;color:#8a8f98}
  .cols{flex:1;display:flex;min-height:0}
- aside{width:240px;flex:none;overflow:auto;padding:14px;border-right:1px solid #1f242d}
- aside.right{border-right:none;border-left:1px solid #1f242d;width:180px}
+ aside{width:152px;flex:none;overflow:auto;padding:12px 10px;border-right:1px solid #1f242d}
+ aside.right{border-right:none;border-left:1px solid #1f242d;width:160px;padding:12px 14px}
  .ttl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin:0 0 10px}
  main{flex:1;display:flex;flex-direction:column;min-width:0;padding:16px 20px;overflow:auto}
  #q{width:100%;font-size:20px;padding:13px 16px;border-radius:12px;border:1px solid #2a2e37;background:#171a21;color:#fff;outline:none}
@@ -64,12 +64,15 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  .row:hover,.row.sel{background:#1d2129}
  .ic{font-size:17px;width:22px;text-align:center;flex:none}
  .meta{flex:1;min-width:0}
+ .date{font:11px ui-monospace,monospace;color:#6b7280;flex:none;width:76px;text-align:left}
+ .date b{display:block;color:#9aa0aa;font-weight:600}
+ .date span{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#4b515c}
  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .path{color:#6b7280;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .sc{font:11px ui-monospace,monospace;color:#9aa0aa;flex:none}
  .tag{font-size:10px;padding:1px 6px;border-radius:20px;background:#2a3550;color:#9ab4ff;margin-left:6px}
  label.flt{display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;font-size:13px}
- .fnode{display:flex;align-items:center;gap:5px;font-size:12px;line-height:1.9;white-space:nowrap}
+ .fnode{display:flex;align-items:center;gap:4px;font-size:11px;line-height:1.7;white-space:nowrap}
  .fnode input{flex:none}
  .caret{width:12px;display:inline-block;color:#6b7280;cursor:pointer;user-select:none}
  .fname{overflow:hidden;text-overflow:ellipsis;cursor:pointer}
@@ -110,6 +113,11 @@ function icon(p){const e=(p.split('.').pop()||'').toLowerCase();
   if(['png','jpg','jpeg'].includes(e))return'🖼️';
   if(['mp4','mov','m4v'].includes(e))return'🎬';return'📄';}
 function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// When the file was added to this machine (creation time). Two-line: day+month
+// over year, so users see at a glance how old each result is.
+function fmtAdded(ts){if(!ts)return'<span>added</span>—';
+  const d=new Date(ts*1000),mo=d.toLocaleString(undefined,{month:'short'});
+  return '<b>'+d.getDate()+' '+mo+'</b><span>'+d.getFullYear()+'</span>';}
 
 function render(items){rows=items;sel=0;
   if(!items.length){R.innerHTML='<div class="hint" style="padding:10px">No matches.</div>';return;}
@@ -117,6 +125,7 @@ function render(items){rows=items;sel=0;
     const name=h.path.split('/').pop(), dir=h.path.slice(0,h.path.length-name.length);
     const pct=Math.max(0,Math.min(100,Math.round(h.score*100)));
     return '<div class="row'+(i===0?' sel':'')+'" data-i="'+i+'">'+
+      '<div class="date" title="added to this Mac">'+fmtAdded(h.added)+'</div>'+
       '<div class="ic">'+icon(h.path)+'</div>'+
       '<div class="meta"><div class="name">'+esc(name)+(h.filename_match?'<span class="tag">name</span>':'')+'</div>'+
       '<div class="path">'+esc(dir)+'</div></div>'+
@@ -201,6 +210,16 @@ FAVICON_SVG = (
 )
 
 
+def _file_added(path: str) -> float:
+    """When the file landed on this machine: birth time (creation) if the OS
+    tracks it (macOS APFS does), else mtime. Epoch seconds; 0 if unstatable."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return 0.0
+    return float(getattr(st, "st_birthtime", 0.0) or st.st_mtime)
+
+
 def _folders() -> dict:
     """Directories that contain indexed files (across all lanes) -> count."""
     counts: dict = {}
@@ -254,6 +273,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(200, [{
                 "rank": h.rank, "score": round(h.score, 6),
                 "filename_match": h.filename_hit, "path": h.path, "exists": h.exists,
+                "added": _file_added(h.path),
             } for h in hits])
         except Exception as exc:
             log.error("search failed: %s", exc)
@@ -309,6 +329,48 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _start_live_indexer():
+    """Watch the tree in-process so new/changed/deleted files are indexed while
+    the server runs — otherwise the index goes stale the moment you add a file.
+    Reuses the same loaded model as search; all inference is serialized by
+    shared._INFER_LOCK, so a background embed can't race a query. Returns a
+    zero-arg shutdown callable (or None if live indexing couldn't start)."""
+    try:
+        import ingest
+        from watchdog.observers import Observer
+    except Exception as exc:
+        log.warning("live indexing unavailable (%s) — index won't auto-update", exc)
+        return None
+
+    root = Path(os.environ.get("TURBOFIND_WATCH_DIR", str(Path.home()))).expanduser()
+    if not root.is_dir():
+        log.warning("watch dir %s missing — live indexing off", root)
+        return None
+    try:
+        coordinator = ingest.Coordinator()
+    except Exception as exc:
+        log.warning("live indexing off (%s)", exc)
+        return None
+
+    handler = ingest.TurboFindEventHandler(coordinator)
+    observer = Observer()
+    observer.schedule(handler, str(root), recursive=True)
+    observer.start()                               # live edits captured immediately
+    scanner = ingest.BackgroundScanner(coordinator, root)
+    scanner.start()                                # low-QoS reconcile of what changed offline
+    log.info("live indexing on — watching %s", root)
+
+    def shutdown() -> None:
+        try:
+            scanner.stop(); scanner.join()
+            observer.stop(); observer.join()
+            handler.cancel_all()
+            coordinator.close()                    # final flush
+        except Exception as exc:
+            log.warning("live indexer shutdown: %s", exc)
+    return shutdown
+
+
 def main() -> int:
     log.info("warming embedding model(s)...")
     for lane in shared.LANES:
@@ -317,6 +379,7 @@ def main() -> int:
         except Exception as exc:
             log.warning("warmup for lane %s failed (loads on first query): %s",
                         lane.name, exc)
+    stop_indexer = _start_live_indexer()
     server = ThreadingHTTPServer((HOST, PORT), _Handler)
     log.info("TurboFind ready — open http://%s:%d in your browser", HOST, PORT)
     try:
@@ -325,6 +388,8 @@ def main() -> int:
         log.info("shutting down.")
     finally:
         server.server_close()
+        if stop_indexer:
+            stop_indexer()
     return 0
 
 

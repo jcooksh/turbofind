@@ -312,6 +312,10 @@ class IndexManager:
             return
         file_id = stable_id(path)
         abs_path = str(path.resolve())
+        try:
+            mtime = path.stat().st_mtime         # remember so edits get re-indexed
+        except OSError:
+            mtime = 0.0
         ids = self._as_id_array(file_id)
         with self._lock:
             try:
@@ -322,7 +326,7 @@ class IndexManager:
             except Exception as exc:
                 log.error("index add failed for %s (id=%d): %s", path, file_id, exc)
                 return
-            self._mapping.put(file_id, abs_path)
+            self._mapping.put(file_id, abs_path, mtime)
             self._mark_dirty()
             # Issue the best-effort Spotlight mirror UNDER the lock so that an
             # add and a delete for the same path are submitted to CoreSpotlight
@@ -395,12 +399,15 @@ class IndexManager:
 
     # -- reconciliation helpers (driven by Coordinator) --------------------
 
-    def needs_index(self, file_id: int) -> bool:
-        """True if this id is missing from EITHER the index or the sidecar. Read
-        under the lock — the watcher/timer threads may be mutating the native
-        index concurrently and a raw native read racing add/remove is undefined."""
+    def needs_index(self, file_id: int, mtime: float = 0.0) -> bool:
+        """True if this id is missing from EITHER store, OR the file changed since
+        it was indexed (mtime newer) — so edits made while we weren't running get
+        re-embedded on the next scan. Read under the lock (watcher/timer threads
+        may be mutating the native index; a raw read racing add/remove is undefined)."""
         with self._lock:
-            return not (self._index.contains(file_id) and self._mapping.contains(file_id))
+            if not (self._index.contains(file_id) and self._mapping.contains(file_id)):
+                return True
+            return mtime > self._mapping.get_mtime(file_id) + 1.0   # 1s slack
 
     def prune_missing(self, seen: set) -> int:
         """Drop mapping/index entries (of THIS lane) for files not in `seen` whose
@@ -578,7 +585,11 @@ class Coordinator:
                 m = self._managers[lane.name]
                 file_id = stable_id(path)
                 seen[lane.name].add(file_id)
-                if m.needs_index(file_id):
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                if m.needs_index(file_id, mtime):     # new OR changed since indexed
                     m.upsert(path, should_stop=should_stop)
                     indexed += 1
                 scanned += 1
