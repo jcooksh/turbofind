@@ -320,17 +320,29 @@ final class ResultRow: NSView {
         let date = label(theme.font(theme.pathSize), theme.faint,
                          align: s.datePos == .right ? .right : .left)
         date.stringValue = dateString(h.added, s.dateFmt)
+
+        // The date "pill" is a container with the label centred inside it (so the
+        // text sits dead-centre on BOTH axes) over a layer-drawn rounded fill.
+        let dateView: NSView
         if s.datePill {
-            // Paint the pill on the layer (NOT the cell background) so cornerRadius
-            // actually clips — a cell fill ignores the rounded layer.
             date.textColor = theme.subtitle
             date.alignment = .center
-            date.wantsLayer = true
-            date.drawsBackground = false
-            date.layer?.backgroundColor = theme.faint.withAlphaComponent(0.16).cgColor
-            date.layer?.cornerRadius = 9
-            date.layer?.masksToBounds = true
-            date.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            let pill = NSView()
+            pill.translatesAutoresizingMaskIntoConstraints = false
+            pill.wantsLayer = true
+            pill.layer?.backgroundColor = theme.faint.withAlphaComponent(0.16).cgColor
+            pill.layer?.cornerRadius = 5          // less rounded (was a fat oval)
+            pill.layer?.masksToBounds = true
+            pill.addSubview(date)
+            NSLayoutConstraint.activate([
+                date.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+                date.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 9),
+                date.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -9),
+                pill.heightAnchor.constraint(equalToConstant: 21),
+            ])
+            dateView = pill
+        } else {
+            dateView = date
         }
 
         // --- assemble the horizontal stack ----------------------------------
@@ -342,8 +354,8 @@ final class ResultRow: NSView {
         h0.detachesHiddenViews = true
 
         if s.datePos == .leftColumn {
-            date.widthAnchor.constraint(equalToConstant: theme.mono ? 92 : 60).isActive = true
-            h0.addArrangedSubview(date)
+            dateView.widthAnchor.constraint(equalToConstant: theme.mono ? 92 : 60).isActive = true
+            h0.addArrangedSubview(dateView)
         }
         if s.showIcon {
             icon.widthAnchor.constraint(equalToConstant: s.iconSize + 8).isActive = true
@@ -385,8 +397,8 @@ final class ResultRow: NSView {
         h0.addArrangedSubview(middle)
 
         if s.datePos == .right {
-            if s.datePill { date.widthAnchor.constraint(greaterThanOrEqualToConstant: 70).isActive = true }
-            h0.addArrangedSubview(date)
+            if s.datePill { dateView.widthAnchor.constraint(greaterThanOrEqualToConstant: 64).isActive = true }
+            h0.addArrangedSubview(dateView)
         }
         if s.showScore {
             score.widthAnchor.constraint(equalToConstant: 42).isActive = true
@@ -577,7 +589,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
             field.drawsBackground = false
             field.layer?.backgroundColor = theme.fieldBg.cgColor
             field.layer?.masksToBounds = true
-            field.layer?.cornerRadius = theme.searchStyle == .pill ? 22
+            field.layer?.cornerRadius = theme.searchStyle == .pill ? 10
                 : theme.searchStyle == .centered ? 12 : 6
             if theme.searchStyle == .underline || theme.searchStyle == .prompt {
                 field.layer?.borderWidth = 1
