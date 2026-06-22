@@ -99,6 +99,7 @@ struct Theme {
     let showFilters: Bool
     let searchStyle: SearchStyle
     let spec: LayoutSpec
+    var translucent: Bool = false      // frosted/vibrant background (like Spotlight)
 
     func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
         mono ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
@@ -144,7 +145,8 @@ enum Themes {
               rowHeight: 56, rowSpacing: 4, showFilters: false, searchStyle: .centered,
               spec: LayoutSpec(showIcon: true, iconSize: 28, datePos: .hidden,
                                showPath: true, inline: false,
-                               showScore: false, showBadge: false)),
+                               showScore: false, showBadge: false),
+              translucent: true),
 
         // 4. Terminal — monospace, green-on-black, ultra-dense, [iso] dates.
         Theme(id: "terminal", name: "Terminal", dark: true,
@@ -185,7 +187,7 @@ enum Themes {
 
     static func byId(_ id: String) -> Theme? { all.first { $0.id == id } }
     static func current() -> Theme {
-        byId(UserDefaults.standard.string(forKey: key) ?? "cards") ?? byId("cards") ?? all[0]
+        byId(UserDefaults.standard.string(forKey: key) ?? "spotlight") ?? byId("spotlight") ?? all[0]
     }
 
     // -- accent override (the "purple" in Cards, recolourable) ---------------
@@ -514,7 +516,27 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         view.subviews.forEach { $0.removeFromSuperview() }
         filters.removeAll()
         view.wantsLayer = true
-        view.layer?.backgroundColor = theme.bg.cgColor
+
+        if theme.translucent {
+            // Frosted/vibrant background (Spotlight-style): blur whatever is behind
+            // the popover instead of an opaque fill.
+            view.layer?.backgroundColor = NSColor.clear.cgColor
+            let fx = NSVisualEffectView()
+            fx.material = .hudWindow
+            fx.blendingMode = .behindWindow
+            fx.state = .active
+            fx.isEmphasized = true
+            fx.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(fx)
+            NSLayoutConstraint.activate([
+                fx.topAnchor.constraint(equalTo: view.topAnchor),
+                fx.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                fx.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                fx.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+        } else {
+            view.layer?.backgroundColor = theme.bg.cgColor
+        }
 
         field = SearchField()
         field.placeholderString = theme.searchStyle == .prompt ? "› search by meaning…" : "Search by meaning…"

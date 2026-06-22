@@ -101,14 +101,14 @@ menu) so the bolt is always there after a reboot.
 ### Themes
 
 Right-click the bolt → **Theme**. Each theme changes the **layout**, not just the
-colours, and your pick is remembered (UserDefaults). **Cards** is the default:
+colours, and your pick is remembered (UserDefaults). **Spotlight** is the default:
 
 | Theme | Look |
 |-------|------|
-| **Cards** (default) | roomy rows with a date pill |
+| **Spotlight** (default) | frosted/translucent, big centred search field, icon-forward rows, no score/date |
+| **Cards** | roomy rows with a date pill |
 | **Default (Dark)** | two-line rows, date column left, score right |
 | **Paper (Light)** | light, dense single-line rows, date on the right |
-| **Spotlight** | big centred search field, icon-forward rows, no score/date |
 | **Terminal** | monospace green-on-black, ultra-dense, `[yyyy-mm-dd]` dates |
 | **Minimal** | light, centred, filename-only, lots of air |
 
