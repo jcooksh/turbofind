@@ -21,6 +21,7 @@
 import AppKit
 import Carbon.HIToolbox    // RegisterEventHotKey — consuming global hot-key (Option+F)
 import ServiceManagement   // SMAppService — launch at login (macOS 13+)
+import Quartz              // QLPreviewPanel — native Quick Look (spacebar preview)
 
 private var tfHotKeyAction: (() -> Void)?
 private func tfHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?,
@@ -474,7 +475,8 @@ final class ResultRow: NSView {
 // and rebuilds its whole layout when the theme changes.
 // ============================================================================
 final class SearchViewController: NSViewController, NSTableViewDataSource,
-                                  NSTableViewDelegate, NSTextFieldDelegate {
+                                  NSTableViewDelegate, NSTextFieldDelegate,
+                                  QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     var theme: Theme = Themes.current()
 
     private var field  = NSTextField()
@@ -487,6 +489,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     private var debounce: Timer?
     private var seq = 0
     private let session = URLSession(configuration: .ephemeral)
+    private var previewURL: NSURL?           // current Quick Look target
 
     private let kinds = [("text", "Text"), ("pdf", "PDF"), ("image", "Images"), ("video", "Video")]
 
@@ -772,8 +775,21 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
 
     private func hit(_ i: Int) -> Hit? { hits.indices.contains(i) ? hits[i] : nil }
     private func reveal(_ i: Int)  { ping("/reveal",  hit(i)?.path) }
-    private func preview(_ i: Int) { ping("/preview", hit(i)?.path) }
     @objc private func onDoubleClick() { reveal(table.selectedRow) }
+
+    /// Native Quick Look (QLPreviewPanel) — the macOS spacebar preview. Replaces
+    /// the old `qlmanage -p` server call, which is Apple's unsupported debug tool
+    /// and crashes ("qlmanage quit unexpectedly").
+    private func preview(_ i: Int) {
+        guard let h = hit(i) else { return }
+        previewURL = NSURL(fileURLWithPath: h.path)
+        guard let panel = QLPreviewPanel.shared() else { return }
+        if QLPreviewPanel.sharedPreviewPanelExists() && panel.isVisible {
+            panel.reloadData()
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
 
     private func ping(_ route: String, _ path: String?) {
         guard let path = path,
@@ -781,6 +797,20 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         comps.queryItems = [URLQueryItem(name: "path", value: path)]
         guard let url = comps.url else { return }
         session.dataTask(with: url).resume()
+    }
+
+    // -- Quick Look panel control (responder chain) -------------------------
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {}
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { previewURL == nil ? 0 : 1 }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        previewURL
     }
 
     // -- table data ---------------------------------------------------------
