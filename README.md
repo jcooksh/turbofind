@@ -33,11 +33,13 @@ pip install -r requirements.txt        # first run downloads the models (~once)
 # first time; after that it's automatic.
 TURBOFIND_MULTI_MODAL=1 python ingest.py --once ~
 
-python serve.py                        # then open http://localhost:8765
+cd menubar && ./build.sh && open TurboFind.app   # the native menu-bar app
 ```
 
-That's it. Type in the browser, hit **Enter** to reveal a file in Finder.
-Prefer the terminal? `python search.py "my tax documents"`.
+That's it. Click the bolt in the menu bar (or press **⌥F** anywhere), type, and
+hit **Enter** to reveal a file in Finder. The app runs the search engine for you
+in the background and auto-indexes new files. Prefer the terminal?
+`python search.py "my tax documents"`.
 
 - Point it at a smaller folder to start if you like — but **not an empty one**:
   semantic search needs a real corpus (a near-empty `~/Documents`, common with
@@ -57,7 +59,7 @@ Prefer the terminal? `python search.py "my tax documents"`.
 | `shared.py` | Config + modality toggle, paths, id hashing, the `id -> path` sidecar, the modality-aware embedder (shared singleton), and turbovec helpers. |
 | `ingest.py` | Background `watchdog` daemon — keeps the index in sync (create/modify/delete/move), media pipeline, low-priority initial scan. |
 | `search.py` | Instant CLI — **hybrid** (semantic + lexical) ranking; prints / `--json` top-k. |
-| `serve.py` | Warm localhost HTTP server (model stays loaded) for the GUI. Also **live-indexes** the watched tree in-process (new/changed/deleted files), so the index never goes stale while it runs. Loopback-only + Host-guarded; no CORS. |
+| `serve.py` | The engine the app drives: a warm loopback **JSON API** (`/search`, `/reveal`, `/preview`) with the model loaded once. Also **live-indexes** the watched tree in-process (new/changed/deleted files), so the index never goes stale while it runs. No browser UI — the front end is the native app. Loopback-only + Host-guarded; no CORS. |
 | `spotlight.py` | Best-effort bridge mirroring indexed items into native macOS CoreSpotlight. |
 | `Launcher.swift` | Spotlight/Raycast-style floating search bar (Option+Space) that drives the backend and reveals files in Finder. |
 
@@ -71,9 +73,10 @@ dense top-50, name matches are unioned back in (an O(N) mapping scan per query;
 a persistent name-token index is the fix for very large corpora). This kills the
 "exam timetable → taxes file" semantic drift.
 
-## Menu-bar app (recommended GUI)
+## The app
 
-A native macOS menu-bar app — no browser, no localhost URL to remember:
+A **native** macOS menu-bar app — no browser, no localhost, no WebView. The
+whole UI (search box + results) is AppKit:
 
 ```bash
 cd menubar && ./build.sh && open TurboFind.app
@@ -88,8 +91,9 @@ with the cursor already in the search box → type. Then:
   highlights the file
 
 (While typing, Space types a space for multi-word queries — press ↓ first to use
-Quick Look, just like Finder.) Folder tree on the left, type filters on the
-right. Right-click the bolt for **Update TurboFind** / **Re-index** / **Quit**.
+Quick Look, just like Finder.) Type-filter checkboxes (text / PDF / image /
+video) sit under the search box, and every result shows the date it was added to
+your Mac. Right-click the bolt for **Update TurboFind** / **Re-index** / **Quit**.
 
 ### Updating
 
@@ -100,8 +104,9 @@ only changes to the Swift app itself prompt a one-time `cd menubar && ./build.sh
 
 It lives only in the menu bar (no Dock icon) and **manages the engine for you**:
 on launch it starts `serve.py` as a hidden background child (Swift can't run the
-ML, so the popover loads the loopback UI in an embedded web view) and stops it on
-quit. Edit `Cfg` in `menubar/TurboFind.swift` if your repo isn't at `~/turbofind`.
+ML) and talks to its loopback JSON API — the popover renders results natively,
+nothing is loaded in a browser. It stops the engine on quit. Edit `Cfg` in
+`menubar/TurboFind.swift` if your repo isn't at `~/turbofind`.
 
 ## Floating-bar launcher (alternative)
 
@@ -160,12 +165,16 @@ python ingest.py --once ~/Documents
 # …or run a live daemon that watches a folder and indexes changes
 python ingest.py ~
 
-# search — browser UI (model stays warm, instant)
-python serve.py                       # http://localhost:8765
-# …or from the terminal
+# search — the menu-bar app (it starts the engine itself)
+open menubar/TurboFind.app
+# …or straight from the terminal
 python search.py "quarterly budget notes"
 python search.py "a dog on a beach"   # finds images & video too
 ```
+
+The app starts `serve.py` for you. To run the engine standalone (e.g. for the
+`search.py` CLI to share a warm model), `python serve.py` listens on
+`127.0.0.1:8765` as a JSON API — there is no browser page to open.
 
 Media (images/video) auto-enables once a media index exists. To create it the
 first time, run any `ingest` with `TURBOFIND_MULTI_MODAL=1` (see Quick start);

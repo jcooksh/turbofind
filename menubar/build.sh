@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 APP="TurboFind.app"
 echo "==> compiling TurboFind.swift"
-swiftc TurboFind.swift -O -o TurboFind -framework AppKit -framework WebKit -framework Carbon
+swiftc TurboFind.swift -O -o TurboFind -framework AppKit -framework Carbon
 
 echo "==> assembling $APP bundle"
 rm -rf "$APP"
