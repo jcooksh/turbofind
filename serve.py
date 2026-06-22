@@ -90,7 +90,7 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  </aside>
  <main>
    <input id="q" placeholder="Search by meaning…" autofocus autocomplete="off" spellcheck="false">
-   <div id="status">Type to search · check folders/types to filter</div>
+   <div id="status">Type · ↓ into results · Space = Quick Look · Enter = open in Finder</div>
    <div id="results"></div>
  </main>
  <aside class="right">
@@ -123,6 +123,7 @@ function render(items){rows=items;sel=0;
       '<div class="sc">'+h.score.toFixed(2)+'</div></div>';}).join('');
   [...R.children].forEach(el=>{ if(el.dataset.i!==undefined) el.onclick=()=>reveal(+el.dataset.i); });}
 function reveal(i){if(rows[i])fetch('/reveal?path='+encodeURIComponent(rows[i].path));}
+function preview(i){if(rows[i])fetch('/preview?path='+encodeURIComponent(rows[i].path));}
 function setSel(n){if(!rows.length)return;sel=Math.max(0,Math.min(rows.length-1,n));
   [...R.children].forEach((el,i)=>el.classList.toggle('sel',i===sel));
   if(R.children[sel])R.children[sel].scrollIntoView({block:'nearest'});}
@@ -146,10 +147,18 @@ function run(){const v=q.value.trim();
 function schedule(){clearTimeout(timer);timer=setTimeout(run,180);}
 
 q.addEventListener('input',schedule);
-q.addEventListener('keydown',e=>{
-  if(e.key==='ArrowDown'){e.preventDefault();setSel(sel+1);}
-  else if(e.key==='ArrowUp'){e.preventDefault();setSel(sel-1);}
-  else if(e.key==='Enter'){e.preventDefault();reveal(sel);}});
+// Unified keys. While typing, Space types a space (multi-word queries). Press
+// Down to step into results — then Space = Quick Look, Enter = open in Finder.
+// Enter opens from the box too; a printable key returns you to typing.
+document.addEventListener('keydown',e=>{
+  const typing = document.activeElement===q;
+  if(e.key==='ArrowDown'){e.preventDefault(); setSel(sel+1); if(typing)q.blur();}
+  else if(e.key==='ArrowUp'){e.preventDefault(); setSel(sel-1);}
+  else if(e.key==='Enter'){e.preventDefault(); reveal(sel);}
+  else if(e.key===' '){ if(!typing){e.preventDefault(); preview(sel);} }
+  else if(e.key==='Escape'){ if(!typing) q.focus(); }
+  else if(!typing && e.key.length===1){ q.focus(); }
+});
 document.querySelectorAll('.tfilter').forEach(c=>c.addEventListener('change',schedule));
 
 // ---- folder tree ----
@@ -223,6 +232,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._handle_search(parse_qs(parsed.query))
         elif parsed.path == "/reveal":
             self._handle_reveal(parse_qs(parsed.query))
+        elif parsed.path == "/preview":
+            self._handle_preview(parse_qs(parsed.query))
         else:
             self._send_json(404, {"error": "not found"})
 
@@ -249,13 +260,31 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_reveal(self, params) -> None:
-        """Reveal a file in Finder via `open -R` (reveal only; existing paths)."""
+        """Reveal a file in Finder (select + scroll to it) AND bring Finder to the
+        front as the active window. Reveal-only; existing paths."""
         path = params.get("path", [""])[0]
         if not path or not os.path.exists(path):
             self._send_json(404, {"ok": False, "error": "path not found"})
             return
         try:
             subprocess.run(["open", "-R", path], check=False, timeout=5)
+            # open -R selects/scrolls; activate guarantees Finder becomes frontmost.
+            subprocess.run(["osascript", "-e", 'tell application "Finder" to activate'],
+                          check=False, timeout=5)
+            self._send_json(200, {"ok": True})
+        except Exception as exc:
+            self._send_json(500, {"ok": False, "error": str(exc)})
+
+    def _handle_preview(self, params) -> None:
+        """Quick Look preview a file (the macOS spacebar preview), via qlmanage.
+        Fire-and-forget so the request returns while the panel stays open."""
+        path = params.get("path", [""])[0]
+        if not path or not os.path.exists(path):
+            self._send_json(404, {"ok": False, "error": "path not found"})
+            return
+        try:
+            subprocess.Popen(["qlmanage", "-p", path],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self._send_json(200, {"ok": True})
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})

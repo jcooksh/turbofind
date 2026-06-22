@@ -21,7 +21,17 @@
 // ============================================================================
 
 import AppKit
+import Carbon.HIToolbox    // RegisterEventHotKey — consuming global hot-key (Option+F)
 import WebKit
+
+// The Carbon hot-key callback is a plain C function (no captured context); it
+// calls through this trampoline, set once at launch and run on the main thread.
+private var tfHotKeyAction: (() -> Void)?
+private func tfHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?,
+                             _ userData: UnsafeMutableRawPointer?) -> OSStatus {
+    tfHotKeyAction?()
+    return noErr
+}
 
 enum Cfg {
     static let repoDir   = "\(NSHomeDirectory())/turbofind"
@@ -37,12 +47,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var webView: WKWebView!
     private var server: Process?
     private var loaded = false
+    private var hotKeyRef: EventHotKeyRef?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)         // menu-bar only, no Dock icon
         startServer()                                 // warm the engine in the background
         buildStatusItem()
         buildPopover()
+        registerHotKey()                              // Option+F summons the panel
+    }
+
+    /// Option+F anywhere -> toggle the search popover. Carbon RegisterEventHotKey
+    /// consumes the chord system-wide and needs no Accessibility permission.
+    private func registerHotKey() {
+        tfHotKeyAction = { [weak self] in
+            guard let self else { return }
+            if self.popover.isShown { self.popover.performClose(nil) } else { self.showPopover() }
+        }
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                 eventKind: OSType(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), tfHotKeyHandler, 1, &spec, nil, nil)
+        let hkID = EventHotKeyID(signature: OSType(0x54424644) /* 'TBFD' */, id: 1)
+        RegisterEventHotKey(UInt32(kVK_ANSI_F), UInt32(optionKey), hkID,
+                            GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 
     // -- menu-bar item ------------------------------------------------------
@@ -89,11 +116,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             showRightClickMenu()
             return
         }
+        if popover.isShown { popover.performClose(sender) } else { showPopover() }
+    }
+
+    private func showPopover() {
         guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-            return
-        }
         if !loaded, let url = URL(string: Cfg.serverURL) {
             webView.load(URLRequest(url: url))        // first open: load the UI
             loaded = true
@@ -163,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationWillTerminate(_ note: Notification) {
+        if let hk = hotKeyRef { UnregisterEventHotKey(hk) }
         server?.terminate()                           // stop the engine we started
     }
 }

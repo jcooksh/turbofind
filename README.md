@@ -78,10 +78,17 @@ A native macOS menu-bar app — no browser, no localhost URL to remember:
 cd menubar && ./build.sh && open TurboFind.app
 ```
 
-Click the bolt in the menu bar → a popover drops down with the cursor already in
-the search box → type → live results → click one to reveal it in Finder. The
-folder tree (left) and type filters (right) come along. Right-click the bolt for
-**Re-index** / **Quit**.
+Click the bolt in the menu bar (or press **⌥F** anywhere) → a popover drops down
+with the cursor already in the search box → type. Then:
+
+- **↓ / ↑** — step into the results
+- **Space** — Quick Look preview the selected file (macOS spacebar preview)
+- **Enter** (or click) — open in Finder: it activates Finder and scrolls to /
+  highlights the file
+
+(While typing, Space types a space for multi-word queries — press ↓ first to use
+Quick Look, just like Finder.) Folder tree on the left, type filters on the
+right. Right-click the bolt for **Re-index** / **Quit**.
 
 It lives only in the menu bar (no Dock icon) and **manages the engine for you**:
 on launch it starts `serve.py` as a hidden background child (Swift can't run the
