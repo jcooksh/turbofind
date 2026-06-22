@@ -111,8 +111,8 @@ colours, and your pick is remembered (UserDefaults). **Cards** is the default:
 | **Minimal** | light, centred, filename-only, lots of air |
 
 **Accent colour** — right-click → **Accent colour** to recolour the highlight
-(Cards' purple, the selection tint, the `name` badge): Purple / Blue / Teal /
-Green / Orange / Pink / Red / Yellow, or **Theme default**. Also remembered.
+(the selection tint and the `name` badge; blue by default): Blue / Purple / Teal
+/ Green / Orange / Pink / Red / Yellow, or **Theme default**. Also remembered.
 
 ### Updating
 

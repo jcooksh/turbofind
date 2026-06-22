@@ -161,7 +161,7 @@ enum Themes {
         Theme(id: "cards", name: "Cards", dark: true,
               popover: NSSize(width: 640, height: 560),
               bg: NSColor(0x111317), fieldBg: NSColor(0x1b1f27), fieldText: .white,
-              accent: NSColor(0xa855f7), title: NSColor(0xf3f4f6),
+              accent: NSColor(0x3b82f6), title: NSColor(0xf3f4f6),
               subtitle: NSColor(0x9ca3af), faint: NSColor(0x6b7280),
               mono: false, titleSize: 14, pathSize: 11, searchSize: 21,
               rowHeight: 66, rowSpacing: 6, showFilters: true, searchStyle: .pill,
@@ -190,7 +190,7 @@ enum Themes {
     // -- accent override (the "purple" in Cards, recolourable) ---------------
     static let accentKey = "turbofind.accent"
     static let accents: [(String, UInt32)] = [
-        ("Purple", 0xa855f7), ("Blue", 0x3b82f6), ("Teal", 0x14b8a6),
+        ("Blue", 0x3b82f6), ("Purple", 0xa855f7), ("Teal", 0x14b8a6),
         ("Green", 0x22c55e), ("Orange", 0xf97316), ("Pink", 0xec4899),
         ("Red", 0xef4444), ("Yellow", 0xeab308),
     ]
