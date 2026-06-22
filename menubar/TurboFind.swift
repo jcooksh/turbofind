@@ -938,10 +938,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // -- self-update --------------------------------------------------------
 
+    /// One-click update. `git pull`, then:
+    ///  - app (Swift) changed  -> rebuild the .app and relaunch ourselves
+    ///  - only Python changed   -> restart the engine in place (no rebuild)
+    /// So the user never has to touch a terminal.
     @objc private func update() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let (ok, out, appChanged) = self.gitPull()
+
+            if ok && !out.contains("Already up to date") && appChanged {
+                let (built, buildOut) = self.runBuild()      // recompile on this bg thread
+                DispatchQueue.main.async {
+                    if built {
+                        self.showAlert("TurboFind", "Updated. The app will rebuild and reopen now.")
+                        self.relaunchApp()                   // swap in the fresh build
+                    } else {
+                        self.showAlert("Update: rebuild failed",
+                            "Pulled the latest, but the app failed to recompile:\n\n\(buildOut)\n\n"
+                            + "You may need Xcode Command Line Tools (`xcode-select --install`), "
+                            + "or run `cd ~/turbofind/menubar && ./build.sh` manually.")
+                    }
+                }
+                return
+            }
+
             DispatchQueue.main.async {
                 if !ok {
                     self.showAlert("Update failed", out.isEmpty ? "git pull failed." : out)
@@ -951,17 +972,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     self.showAlert("TurboFind", "Already up to date.")
                     return
                 }
-                var msg = "Updated to the latest.\nClick OK to restart the engine (takes a few seconds).\n\n" + out
-                if appChanged {
-                    msg += "\n\n⚠️ The menu-bar app itself changed — run "
-                         + "`cd ~/turbofind/menubar && ./build.sh` and reopen to get those."
-                }
-                self.showAlert("TurboFind", msg)
+                // Python-only change: restart the engine, no rebuild needed.
+                self.showAlert("TurboFind", "Updated.\nThe engine is restarting (a few seconds).\n\n" + out)
                 self.server?.terminate()
                 self.server = nil
                 self.startServer()
             }
         }
+    }
+
+    /// Recompile + reassemble the .app via build.sh. Returns (success, output).
+    private func runBuild() -> (Bool, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.currentDirectoryURL = URL(fileURLWithPath: "\(Cfg.repoDir)/menubar")
+        p.arguments = ["build.sh"]
+        let pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = pipe
+        do { try p.run() } catch { return (false, "could not run build.sh: \(error.localizedDescription)") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus == 0, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// Relaunch the freshly-built bundle: a detached shell waits for us to quit,
+    /// then reopens the app (so the new serve.py can bind 8765 once ours frees it).
+    private func relaunchApp() {
+        let appPath = "\(Cfg.repoDir)/menubar/TurboFind.app"
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "sleep 1; /usr/bin/open \"\(appPath)\""]
+        try? p.run()
+        NSApp.terminate(nil)   // applicationWillTerminate stops our serve.py + hot-key
     }
 
     private func gitPull() -> (Bool, String, Bool) {

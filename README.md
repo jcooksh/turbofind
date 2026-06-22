@@ -116,10 +116,16 @@ Green / Orange / Pink / Red / Yellow, or **Theme default**. Also remembered.
 
 ### Updating
 
-**Update TurboFind** (right-click the bolt) runs `git pull` and restarts the
-engine in place — new code is live in a few seconds, no terminal. Or from a
-terminal: `~/turbofind/update.sh`. Either way, Python changes need no rebuild;
-only changes to the Swift app itself prompt a one-time `cd menubar && ./build.sh`.
+**Update TurboFind** (right-click the bolt) is one click — no terminal, ever:
+
+- `git pull`s the latest;
+- if only the Python engine changed, it restarts the engine in place;
+- if the **app itself** changed, it recompiles the `.app` and reopens itself.
+
+(Rebuilding needs Xcode Command Line Tools — `xcode-select --install` — which a
+build-from-source user already has.) `~/turbofind/update.sh` does the same from a
+terminal. The only time you run `./build.sh` by hand is the **very first** build,
+to get this button onto your machine.
 
 It lives only in the menu bar (no Dock icon) and **manages the engine for you**:
 on launch it starts `serve.py` as a hidden background child (Swift can't run the
