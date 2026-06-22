@@ -163,7 +163,7 @@ enum Themes {
               bg: NSColor(0x111317), fieldBg: NSColor(0x1b1f27), fieldText: .white,
               accent: NSColor(0xa855f7), title: NSColor(0xf3f4f6),
               subtitle: NSColor(0x9ca3af), faint: NSColor(0x6b7280),
-              mono: false, titleSize: 14, pathSize: 11, searchSize: 18,
+              mono: false, titleSize: 14, pathSize: 11, searchSize: 21,
               rowHeight: 66, rowSpacing: 6, showFilters: true, searchStyle: .pill,
               spec: LayoutSpec(showIcon: true, iconSize: 24, datePos: .right,
                                dateFmt: .short, datePill: true, showPath: true,
@@ -199,6 +199,47 @@ enum Themes {
         guard let s = UserDefaults.standard.string(forKey: accentKey),
               let v = UInt32(s, radix: 16) else { return nil }
         return NSColor(v)
+    }
+}
+
+// ============================================================================
+// Search field — NSTextField doesn't vertically centre single-line text in a
+// tall frame (it rides to the top) and bezel-less fields have no left inset.
+// This cell centres the text on the Y axis and pads bezel-less fields.
+// ============================================================================
+final class VCenterTextFieldCell: NSTextFieldCell {
+    private func adjusted(_ rect: NSRect) -> NSRect {
+        var r = rect
+        if !isBezeled { r.origin.x += 11; r.size.width -= 22 }   // breathing room
+        let th = cellSize(forBounds: r).height
+        if th < r.height {                                        // centre vertically
+            r.origin.y += (r.height - th) / 2
+            r.size.height = th
+        }
+        return r
+    }
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        super.drawingRect(forBounds: adjusted(rect))
+    }
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        super.drawInterior(withFrame: adjusted(cellFrame), in: controlView)
+    }
+    override func edit(withFrame rect: NSRect, in controlView: NSView,
+                       editor: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: adjusted(rect), in: controlView, editor: editor,
+                   delegate: delegate, event: event)
+    }
+    override func select(withFrame rect: NSRect, in controlView: NSView,
+                         editor: NSText, delegate: Any?, start: Int, length: Int) {
+        super.select(withFrame: adjusted(rect), in: controlView, editor: editor,
+                     delegate: delegate, start: start, length: length)
+    }
+}
+
+final class SearchField: NSTextField {
+    override class var cellClass: AnyClass? {
+        get { VCenterTextFieldCell.self }
+        set { }
     }
 }
 
@@ -474,7 +515,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         view.wantsLayer = true
         view.layer?.backgroundColor = theme.bg.cgColor
 
-        field = NSTextField()
+        field = SearchField()
         field.placeholderString = theme.searchStyle == .prompt ? "› search by meaning…" : "Search by meaning…"
         field.font = theme.font(theme.searchSize)
         field.textColor = theme.fieldText
@@ -534,7 +575,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -m / 2),
         ]
         if theme.searchStyle == .pill || theme.searchStyle == .centered {
-            cons.append(field.heightAnchor.constraint(equalToConstant: 44))
+            cons.append(field.heightAnchor.constraint(equalToConstant: 46))
         }
 
         // Filter row only when the theme wants it; otherwise the table rises up.
