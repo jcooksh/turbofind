@@ -797,9 +797,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func menuBarIcon() -> NSImage {
-        let path = "\(Cfg.repoDir)/assets/logo-black.svg"
+        // Template image: the menu bar renders it monochrome from the alpha, so
+        // the white mark adapts to light/dark automatically.
+        let path = "\(Cfg.repoDir)/assets/logo-white.png"
         if let img = NSImage(contentsOfFile: path) {
-            img.size = NSSize(width: 18, height: 18)
+            let h: CGFloat = 17
+            img.size = NSSize(width: h * (img.size.width / max(img.size.height, 1)), height: h)
             return img
         }
         return NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "TurboFind") ?? NSImage()

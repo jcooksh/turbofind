@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white.svg">
-    <img src="assets/logo-black.svg" width="104" alt="TurboFind">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white.png">
+    <img src="assets/logo-black.png" width="116" alt="TurboFind">
   </picture>
 </p>
 
