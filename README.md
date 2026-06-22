@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jcooksh/turbofind/releases/latest">
+  <a href="https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg">
     <img src="assets/download-mac.svg" alt="Download for macOS" height="46">
   </a>
 </p>
