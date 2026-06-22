@@ -105,7 +105,7 @@ colours, and your pick is remembered (UserDefaults). **Spotlight** is the defaul
 
 | Theme | Look |
 |-------|------|
-| **Spotlight** (default) | frosted/translucent, big centred search field, icon-forward rows, no score/date |
+| **Spotlight** (default) | frosted/translucent, big centred search field, icon-forward rows, date on the right |
 | **Cards** | roomy rows with a date pill |
 | **Default (Dark)** | two-line rows, date column left, score right |
 | **Paper (Light)** | light, dense single-line rows, date on the right |
