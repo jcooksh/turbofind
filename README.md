@@ -94,7 +94,9 @@ with the cursor already in the search box → type. Then:
 Quick Look, just like Finder. Delete jumps back to the box to fix your query.)
 Type-filter checkboxes (text / PDF / image / video) sit under the search box, and
 every result shows the date it was added to your Mac. Right-click the bolt for
-**Theme** / **Update TurboFind** / **Re-index** / **Quit**.
+**Theme** / **Accent colour** / **Start at login** / **Update TurboFind** /
+**Re-index** / **Quit**. It **starts at login by default** (toggle it off in that
+menu) so the bolt is always there after a reboot.
 
 ### Themes
 

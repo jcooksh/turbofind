@@ -20,6 +20,7 @@
 
 import AppKit
 import Carbon.HIToolbox    // RegisterEventHotKey — consuming global hot-key (Option+F)
+import ServiceManagement   // SMAppService — launch at login (macOS 13+)
 
 private var tfHotKeyAction: (() -> Void)?
 private func tfHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?,
@@ -802,6 +803,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         var t = baseTheme; t.accent = c; return t
     }
 
+    private let launchKey = "turbofind.launchAtLogin"
+
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         startServer()
@@ -809,6 +812,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         buildStatusItem()
         buildPopover()
         registerHotKey()
+        setupLoginItem()
+    }
+
+    // -- launch at login ----------------------------------------------------
+
+    /// Default ON: the first time we run, opt into starting at login so the bolt
+    /// is always there after a reboot. The user can turn it off in the menu.
+    private func setupLoginItem() {
+        let d = UserDefaults.standard
+        if d.object(forKey: launchKey) == nil { d.set(true, forKey: launchKey) }
+        applyLoginItem(d.bool(forKey: launchKey))
+    }
+
+    private func applyLoginItem(_ on: Bool) {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if on {
+                if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
+            } else {
+                if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+            }
+        } catch {
+            NSLog("[TurboFind] launch-at-login \(on ? "register" : "unregister") failed: \(error)")
+        }
+    }
+
+    private func loginItemEnabled() -> Bool {
+        if #available(macOS 13.0, *) { return SMAppService.mainApp.status == .enabled }
+        return UserDefaults.standard.bool(forKey: launchKey)
+    }
+
+    @objc private func toggleLoginItem(_ sender: NSMenuItem) {
+        let on = !loginItemEnabled()
+        UserDefaults.standard.set(on, forKey: launchKey)
+        applyLoginItem(on)
     }
 
     private func registerHotKey() {
@@ -905,6 +943,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         accentItem.submenu = accentMenu()
         menu.addItem(accentItem)
         menu.addItem(.separator())
+        let login = NSMenuItem(title: "Start at login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
+        login.state = loginItemEnabled() ? .on : .off
+        login.target = self
+        menu.addItem(login)
         menu.addItem(withTitle: "Update TurboFind…", action: #selector(update), keyEquivalent: "")
         menu.addItem(withTitle: "Re-index home (~)…", action: #selector(reindex), keyEquivalent: "")
         menu.addItem(.separator())
