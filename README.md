@@ -62,14 +62,31 @@ dense top-50, name matches are unioned back in (an O(N) mapping scan per query;
 a persistent name-token index is the fix for very large corpora). This kills the
 "exam timetable → taxes file" semantic drift.
 
-## GUI launcher
+## Menu-bar app (recommended GUI)
 
-Build: `swiftc Launcher.swift -o TurboFind -framework SwiftUI -framework AppKit && ./TurboFind`.
-Edit `Config` in `Launcher.swift` to point at your venv + repo and pick the
-backend: `.process` (zero setup, spawns `search.py` per query) or `.httpServer`
-(run `python serve.py` first — model stays warm for instant per-keystroke
-results). Option+Space is a Carbon `RegisterEventHotKey` (consumes the chord, no
-Accessibility permission needed); Enter reveals the file in Finder.
+A native macOS menu-bar app — no browser, no localhost URL to remember:
+
+```bash
+cd menubar && ./build.sh && open TurboFind.app
+```
+
+Click the bolt in the menu bar → a popover drops down with the cursor already in
+the search box → type → live results → click one to reveal it in Finder. The
+folder tree (left) and type filters (right) come along. Right-click the bolt for
+**Re-index** / **Quit**.
+
+It lives only in the menu bar (no Dock icon) and **manages the engine for you**:
+on launch it starts `serve.py` as a hidden background child (Swift can't run the
+ML, so the popover loads the loopback UI in an embedded web view) and stops it on
+quit. Edit `Cfg` in `menubar/TurboFind.swift` if your repo isn't at `~/turbofind`.
+
+## Floating-bar launcher (alternative)
+
+`swiftc Launcher.swift -o TurboFind -framework SwiftUI -framework AppKit && ./TurboFind`.
+A Spotlight-style floating bar on a global hot-key (Option+Space, Carbon
+`RegisterEventHotKey` — consumes the chord, no Accessibility permission). Edit
+`Config` in `Launcher.swift`; pick `.process` (zero setup) or `.httpServer`
+(run `serve.py` first, instant). Enter reveals in Finder.
 
 `turbovec` stores only `(uint64 id -> compressed vector)`. The `id -> absolute path`
 half lives in the sidecar JSON; ids are a BLAKE2b hash of the resolved path, so
