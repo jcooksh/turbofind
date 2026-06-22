@@ -859,12 +859,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        buildMainMenu()                               // enables ⌘A/⌘C/⌘V/⌘X/⌘Z in the field
         startServer()
         searchVC.theme = effectiveTheme()
         buildStatusItem()
         buildPopover()
         registerHotKey()
         setupLoginItem()
+    }
+
+    /// An accessory app shows no menu bar, so the standard Edit-menu key
+    /// equivalents (⌘A/⌘C/⌘V/⌘X/⌘Z) are never wired up — the search field can't
+    /// copy/paste/select-all. Install a hidden main menu with those items
+    /// (nil target → routed to the first responder, i.e. the field editor).
+    private func buildMainMenu() {
+        let main = NSMenu()
+        let editItem = NSMenuItem()
+        main.addItem(editItem)
+        let edit = NSMenu(title: "Edit")
+        editItem.submenu = edit
+
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut",  action: #selector(NSText.cut(_:)),  keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        NSApp.mainMenu = main
     }
 
     // -- launch at login ----------------------------------------------------
