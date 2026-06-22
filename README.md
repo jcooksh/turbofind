@@ -99,16 +99,20 @@ every result shows the date it was added to your Mac. Right-click the bolt for
 ### Themes
 
 Right-click the bolt → **Theme**. Each theme changes the **layout**, not just the
-colours, and your pick is remembered (UserDefaults):
+colours, and your pick is remembered (UserDefaults). **Cards** is the default:
 
 | Theme | Look |
 |-------|------|
-| **Default (Dark)** | the original — two-line rows, date column left, score right |
+| **Cards** (default) | roomy rows with a date pill |
+| **Default (Dark)** | two-line rows, date column left, score right |
 | **Paper (Light)** | light, dense single-line rows, date on the right |
 | **Spotlight** | big centred search field, icon-forward rows, no score/date |
 | **Terminal** | monospace green-on-black, ultra-dense, `[yyyy-mm-dd]` dates |
-| **Cards** | roomy purple rows with a date pill |
 | **Minimal** | light, centred, filename-only, lots of air |
+
+**Accent colour** — right-click → **Accent colour** to recolour the highlight
+(Cards' purple, the selection tint, the `name` badge): Purple / Blue / Teal /
+Green / Orange / Pink / Red / Yellow, or **Theme default**. Also remembered.
 
 ### Updating
 

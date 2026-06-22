@@ -83,7 +83,7 @@ struct Theme {
     let bg: NSColor
     let fieldBg: NSColor
     let fieldText: NSColor
-    let accent: NSColor         // selection tint + flourishes
+    var accent: NSColor         // selection tint + flourishes (user-overridable)
     let title: NSColor
     let subtitle: NSColor
     let faint: NSColor
@@ -184,7 +184,21 @@ enum Themes {
 
     static func byId(_ id: String) -> Theme? { all.first { $0.id == id } }
     static func current() -> Theme {
-        byId(UserDefaults.standard.string(forKey: key) ?? "default") ?? all[0]
+        byId(UserDefaults.standard.string(forKey: key) ?? "cards") ?? byId("cards") ?? all[0]
+    }
+
+    // -- accent override (the "purple" in Cards, recolourable) ---------------
+    static let accentKey = "turbofind.accent"
+    static let accents: [(String, UInt32)] = [
+        ("Purple", 0xa855f7), ("Blue", 0x3b82f6), ("Teal", 0x14b8a6),
+        ("Green", 0x22c55e), ("Orange", 0xf97316), ("Pink", 0xec4899),
+        ("Red", 0xef4444), ("Yellow", 0xeab308),
+    ]
+    /// User-chosen accent, or nil to use the theme's own accent.
+    static func currentAccent() -> NSColor? {
+        guard let s = UserDefaults.standard.string(forKey: accentKey),
+              let v = UInt32(s, radix: 16) else { return nil }
+        return NSColor(v)
     }
 }
 
@@ -726,12 +740,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let searchVC = SearchViewController()
     private var server: Process?
     private var hotKeyRef: EventHotKeyRef?
-    private var theme = Themes.current()
+    private var baseTheme = Themes.current()
+    private var accentOverride: NSColor? = Themes.currentAccent()
+
+    /// The theme actually shown: the chosen theme with the user's accent applied.
+    private func effectiveTheme() -> Theme {
+        guard let c = accentOverride else { return baseTheme }
+        var t = baseTheme; t.accent = c; return t
+    }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         startServer()
-        searchVC.theme = theme
+        searchVC.theme = effectiveTheme()
         buildStatusItem()
         buildPopover()
         registerHotKey()
@@ -775,12 +796,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // -- popover ------------------------------------------------------------
 
     private func buildPopover() {
+        let t = effectiveTheme()
         popover.contentViewController = searchVC
-        popover.contentSize = theme.popover
+        popover.contentSize = t.popover
         popover.behavior = .transient
         popover.animates = false
-        popover.appearance = NSAppearance(named: theme.dark ? .darkAqua : .aqua)
+        popover.appearance = NSAppearance(named: t.dark ? .darkAqua : .aqua)
         popover.delegate = self
+    }
+
+    /// Re-apply the current theme+accent to the live popover.
+    private func applyCurrent() {
+        let t = effectiveTheme()
+        popover.contentSize = t.popover
+        popover.appearance = NSAppearance(named: t.dark ? .darkAqua : .aqua)
+        searchVC.apply(theme: t)
+        if popover.isShown { focusSearchField() }
     }
 
     @objc private func statusClicked(_ sender: Any?) {
@@ -814,6 +845,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
         themeItem.submenu = themeMenu()
         menu.addItem(themeItem)
+        let accentItem = NSMenuItem(title: "Accent colour", action: nil, keyEquivalent: "")
+        accentItem.submenu = accentMenu()
+        menu.addItem(accentItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Update TurboFind…", action: #selector(update), keyEquivalent: "")
         menu.addItem(withTitle: "Re-index home (~)…", action: #selector(reindex), keyEquivalent: "")
@@ -829,7 +863,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         for t in Themes.all {
             let it = NSMenuItem(title: t.name, action: #selector(pickTheme(_:)), keyEquivalent: "")
             it.representedObject = t.id
-            it.state = (t.id == theme.id) ? .on : .off
+            it.state = (t.id == baseTheme.id) ? .on : .off
             it.target = self
             m.addItem(it)
         }
@@ -838,12 +872,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func pickTheme(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let t = Themes.byId(id) else { return }
-        theme = t
+        baseTheme = t
         UserDefaults.standard.set(t.id, forKey: Themes.key)
-        popover.contentSize = t.popover
-        popover.appearance = NSAppearance(named: t.dark ? .darkAqua : .aqua)
-        searchVC.apply(theme: t)
-        if popover.isShown { focusSearchField() }
+        applyCurrent()
+    }
+
+    private func accentMenu() -> NSMenu {
+        let m = NSMenu()
+        let cur = UserDefaults.standard.string(forKey: Themes.accentKey)
+        let def = NSMenuItem(title: "Theme default", action: #selector(pickAccent(_:)), keyEquivalent: "")
+        def.representedObject = ""
+        def.state = (cur == nil) ? .on : .off
+        def.target = self
+        m.addItem(def)
+        m.addItem(.separator())
+        for (name, hex) in Themes.accents {
+            let s = String(hex, radix: 16)
+            let it = NSMenuItem(title: name, action: #selector(pickAccent(_:)), keyEquivalent: "")
+            it.representedObject = s
+            it.state = (cur == s) ? .on : .off
+            it.image = swatch(NSColor(hex))
+            it.target = self
+            m.addItem(it)
+        }
+        return m
+    }
+
+    @objc private func pickAccent(_ sender: NSMenuItem) {
+        let s = (sender.representedObject as? String) ?? ""
+        if s.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Themes.accentKey)
+            accentOverride = nil
+        } else {
+            UserDefaults.standard.set(s, forKey: Themes.accentKey)
+            accentOverride = NSColor(UInt32(s, radix: 16) ?? 0xa855f7)
+        }
+        applyCurrent()
+    }
+
+    /// A small rounded colour chip for the accent menu items.
+    private func swatch(_ c: NSColor) -> NSImage {
+        let sz = NSSize(width: 13, height: 13)
+        let img = NSImage(size: sz)
+        img.lockFocus()
+        c.setFill()
+        NSBezierPath(roundedRect: NSRect(origin: .zero, size: sz), xRadius: 3, yRadius: 3).fill()
+        img.unlockFocus()
+        return img
     }
 
     // -- self-update --------------------------------------------------------
