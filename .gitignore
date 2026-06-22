@@ -20,6 +20,12 @@ TurboFind
 *.o
 .build/
 
+# menu-bar app build artifacts (AppIcon.icns IS committed)
+menubar/TurboFind.app/
+menubar/TurboFind
+menubar/icon_1024.png
+menubar/AppIcon.iconset/
+
 # macOS / editor cruft
 .DS_Store
 *.swp
