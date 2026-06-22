@@ -60,11 +60,11 @@ INDEX_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  #q{width:100%;font-size:20px;padding:13px 16px;border-radius:12px;border:1px solid #2a2e37;background:#171a21;color:#fff;outline:none}
  #q:focus{border-color:#3b82f6}
  #status{color:#6b7280;font-size:12px;margin:9px 2px;height:14px}
- .row{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;cursor:pointer}
+ .row{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;cursor:pointer}
  .row:hover,.row.sel{background:#1d2129}
  .ic{font-size:17px;width:22px;text-align:center;flex:none}
  .meta{flex:1;min-width:0}
- .date{font:11px ui-monospace,monospace;color:#6b7280;flex:none;width:76px;text-align:left}
+ .date{font:11px ui-monospace,monospace;color:#6b7280;flex:none;width:50px;text-align:right;margin-right:2px}
  .date b{display:block;color:#9aa0aa;font-weight:600}
  .date span{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#4b515c}
  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
