@@ -146,12 +146,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showRightClickMenu() {
         let menu = NSMenu()
+        menu.addItem(withTitle: "Update TurboFind…", action: #selector(update), keyEquivalent: "")
         menu.addItem(withTitle: "Re-index home (~)…", action: #selector(reindex), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit TurboFind", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
         statusItem.button?.performClick(nil)          // show it under the item
         statusItem.menu = nil                         // reset so left-click opens the popover
+    }
+
+    // -- self-update --------------------------------------------------------
+
+    /// `git pull` the repo, then bounce serve.py so the new Python code is live.
+    /// Python changes (serve/ingest/search/shared) need no rebuild — the app
+    /// just relaunches its engine child. Only changes to THIS Swift app require
+    /// re-running build.sh (noted in the alert when the app sources moved).
+    @objc private func update() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let (ok, out, appChanged) = self.gitPull()
+            DispatchQueue.main.async {
+                if !ok {
+                    self.showAlert("Update failed", out.isEmpty ? "git pull failed." : out)
+                    return
+                }
+                if out.contains("Already up to date") {
+                    self.showAlert("TurboFind", "Already up to date.")
+                    return
+                }
+                var msg = "Updated to the latest.\nClick OK to restart the engine (takes a few seconds).\n\n" + out
+                if appChanged {
+                    msg += "\n\n⚠️ The menu-bar app itself changed — run "
+                         + "`cd ~/turbofind/menubar && ./build.sh` and reopen to get those."
+                }
+                self.showAlert("TurboFind", msg)
+                self.server?.terminate()                  // drop the old engine
+                self.server = nil
+                self.loaded = false                       // force a fresh webview load
+                self.startServer()                        // new code, fresh process
+                if self.popover.isShown, let url = URL(string: Cfg.serverURL) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        self.webView.load(URLRequest(url: url)); self.loaded = true
+                    }
+                }
+            }
+        }
+    }
+
+    /// Run `git pull --ff-only` in the repo. Returns (success, combined output,
+    /// whether any menubar/ source changed). Reads the pipe before waiting so a
+    /// large output can't fill the buffer and deadlock the child.
+    private func gitPull() -> (Bool, String, Bool) {
+        let before = self.gitHead()
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.currentDirectoryURL = URL(fileURLWithPath: Cfg.repoDir)
+        p.arguments = ["pull", "--ff-only"]
+        let pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = pipe
+        do { try p.run() } catch { return (false, "could not run git: \(error.localizedDescription)", false) }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let out = String(data: data, encoding: .utf8) ?? ""
+        let appChanged = !before.isEmpty && self.gitFilesChanged(since: before).contains { $0.hasPrefix("menubar/") }
+        return (p.terminationStatus == 0, out, appChanged)
+    }
+
+    private func gitHead() -> String { runGit(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines) }
+    private func gitFilesChanged(since ref: String) -> [String] {
+        runGit(["diff", "--name-only", ref, "HEAD"]).split(separator: "\n").map(String.init)
+    }
+    private func runGit(_ args: [String]) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.currentDirectoryURL = URL(fileURLWithPath: Cfg.repoDir)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func showAlert(_ title: String, _ msg: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = msg
+        a.runModal()
     }
 
     @objc private func reindex() {

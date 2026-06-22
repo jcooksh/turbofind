@@ -89,7 +89,14 @@ with the cursor already in the search box → type. Then:
 
 (While typing, Space types a space for multi-word queries — press ↓ first to use
 Quick Look, just like Finder.) Folder tree on the left, type filters on the
-right. Right-click the bolt for **Re-index** / **Quit**.
+right. Right-click the bolt for **Update TurboFind** / **Re-index** / **Quit**.
+
+### Updating
+
+**Update TurboFind** (right-click the bolt) runs `git pull` and restarts the
+engine in place — new code is live in a few seconds, no terminal. Or from a
+terminal: `~/turbofind/update.sh`. Either way, Python changes need no rebuild;
+only changes to the Swift app itself prompt a one-time `cd menubar && ./build.sh`.
 
 It lives only in the menu bar (no Dock icon) and **manages the engine for you**:
 on launch it starts `serve.py` as a hidden background child (Swift can't run the
