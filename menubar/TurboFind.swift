@@ -101,6 +101,7 @@ struct Theme {
     let searchStyle: SearchStyle
     let spec: LayoutSpec
     var translucent: Bool = false      // frosted/vibrant background (like Spotlight)
+    var appleChrome: Bool = false      // full Sonoma chrome: search-bar field, dot pills, keycap footer
 
     func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
         mono ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
@@ -128,7 +129,7 @@ enum Themes {
               spec: LayoutSpec(showIcon: true, iconSize: 26, datePos: .right, dateFmt: .short,
                                datePill: false, showPath: true, inline: false,
                                showScore: false, showBadge: true),
-              translucent: true),
+              translucent: true, appleChrome: true),
 
         Theme(id: "apple-light", name: "Apple (Light)", dark: false,
               popover: NSSize(width: 660, height: 500),
@@ -144,7 +145,7 @@ enum Themes {
               spec: LayoutSpec(showIcon: true, iconSize: 26, datePos: .right, dateFmt: .short,
                                datePill: false, showPath: true, inline: false,
                                showScore: false, showBadge: true),
-              translucent: true),
+              translucent: true, appleChrome: true),
 
         // 1. The original.
         Theme(id: "default", name: "Default (Dark)", dark: true,
@@ -525,6 +526,101 @@ final class ResultRow: NSView {
 }
 
 // ============================================================================
+// Filter bar — the Apple-chrome segmented pill group: a rounded track holding
+// one pill per file type, each with a coloured status dot. Independent toggles.
+// ============================================================================
+final class FilterBar: NSView {
+    struct Item { let key: String; let label: String; let dot: NSColor }
+    private let items: [Item]
+    private let theme: Theme
+    private var selected: Set<String>
+    var onChange: (() -> Void)?
+    private var pills: [(item: Item, pill: NSView, label: NSTextField, dot: NSView)] = []
+
+    init(items: [Item], theme: Theme) {
+        self.items = items
+        self.theme = theme
+        self.selected = Set(items.map { $0.key })       // all on by default
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        build()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// nil == all on (no filter); otherwise the (possibly empty) selected list.
+    func selectedKeys() -> [String]? {
+        selected.count == items.count ? nil : items.map { $0.key }.filter { selected.contains($0) }
+    }
+
+    private var trackBg: NSColor { theme.dark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.05) }
+    private var pillFg:  NSColor { theme.dark ? NSColor(0xd6d6db) : NSColor(0x55555b) }
+    private var onBg:    NSColor { theme.dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 1, alpha: 0.92) }
+
+    private func build() {
+        wantsLayer = true
+        layer?.backgroundColor = trackBg.cgColor
+        layer?.cornerRadius = 9
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.spacing = 3
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        for it in items {
+            let pill = NSView()
+            pill.wantsLayer = true
+            pill.layer?.cornerRadius = 7
+            pill.translatesAutoresizingMaskIntoConstraints = false
+            let dot = NSView()
+            dot.wantsLayer = true
+            dot.layer?.cornerRadius = 3
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            let lbl = NSTextField(labelWithString: it.label)
+            lbl.font = theme.font(12, .medium)
+            lbl.translatesAutoresizingMaskIntoConstraints = false
+            pill.addSubview(dot); pill.addSubview(lbl)
+            NSLayoutConstraint.activate([
+                dot.widthAnchor.constraint(equalToConstant: 6),
+                dot.heightAnchor.constraint(equalToConstant: 6),
+                dot.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 11),
+                dot.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+                lbl.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
+                lbl.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -11),
+                lbl.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+                pill.heightAnchor.constraint(equalToConstant: 24),
+            ])
+            pill.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tap(_:))))
+            stack.addArrangedSubview(pill)
+            pills.append((it, pill, lbl, dot))
+        }
+        restyle()
+    }
+
+    @objc private func tap(_ g: NSClickGestureRecognizer) {
+        guard let v = g.view, let i = pills.firstIndex(where: { $0.pill === v }) else { return }
+        let key = pills[i].item.key
+        if selected.contains(key) { selected.remove(key) } else { selected.insert(key) }
+        restyle()
+        onChange?()
+    }
+
+    private func restyle() {
+        for (it, pill, lbl, dot) in pills {
+            let on = selected.contains(it.key)
+            pill.layer?.backgroundColor = on ? onBg.cgColor : NSColor.clear.cgColor
+            lbl.textColor = on ? theme.title : pillFg
+            dot.layer?.backgroundColor = (on ? it.dot : theme.faint).cgColor
+        }
+    }
+}
+
+// ============================================================================
 // Search view controller — owns the field, type filters and results table,
 // and rebuilds its whole layout when the theme changes.
 // ============================================================================
@@ -538,6 +634,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     private var table  = ResultsTableView()
     private var status = NSTextField(labelWithString: "")
     private var filterSeg: NSSegmentedControl?
+    private var filterBar: FilterBar?
 
     private var hits: [Hit] = []
     private var debounce: Timer?
@@ -572,6 +669,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         debounce?.invalidate(); debounce = nil   // no timer from the old UI fires post-rebuild
         view.subviews.forEach { $0.removeFromSuperview() }
         filterSeg = nil
+        filterBar = nil
         view.wantsLayer = true
 
         if theme.translucent {
@@ -603,7 +701,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         field.focusRingType = .none
         field.translatesAutoresizingMaskIntoConstraints = false
         field.alignment = (theme.searchStyle == .centered) ? .center : .left
-        styleField()
+        if !theme.appleChrome { styleField() }
 
         status = NSTextField(labelWithString: "↑↓ Navigate · space Quick Look · ↵ Reveal in Finder")
         status.font = theme.font(11)
@@ -638,6 +736,8 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        if theme.appleChrome { layoutAppleChrome(); return }
 
         view.addSubview(field)
         view.addSubview(status)
@@ -692,6 +792,186 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
             ]
         }
         NSLayoutConstraint.activate(cons)
+    }
+
+    // -- Apple / Sonoma chrome ---------------------------------------------
+
+    private func hairline() -> NSView {
+        let v = NSView(); v.wantsLayer = true
+        v.layer?.backgroundColor = (theme.dark ? NSColor(white: 1, alpha: 0.09)
+                                               : NSColor(white: 0, alpha: 0.07)).cgColor
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        return v
+    }
+
+    /// A small keycap chip. `accent` fills it with the accent (for ↵ Reveal).
+    private func keycap(_ s: String, accent: Bool = false) -> NSView {
+        let box = NSView(); box.wantsLayer = true
+        box.layer?.cornerRadius = 5; box.layer?.masksToBounds = true
+        box.translatesAutoresizingMaskIntoConstraints = false
+        let lbl = NSTextField(labelWithString: s)
+        lbl.font = theme.font(11, .semibold); lbl.alignment = .center
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        if accent {
+            box.layer?.backgroundColor = theme.accent.cgColor
+            lbl.textColor = .white
+        } else {
+            box.layer?.backgroundColor = (theme.dark ? NSColor(white: 1, alpha: 0.08)
+                                                     : NSColor(white: 0, alpha: 0.05)).cgColor
+            box.layer?.borderWidth = 1
+            box.layer?.borderColor = (theme.dark ? NSColor(white: 1, alpha: 0.10)
+                                                 : NSColor(white: 0, alpha: 0.07)).cgColor
+            lbl.textColor = theme.subtitle
+        }
+        box.addSubview(lbl)
+        NSLayoutConstraint.activate([
+            lbl.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            lbl.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 6),
+            lbl.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -6),
+            box.heightAnchor.constraint(equalToConstant: 18),
+            box.widthAnchor.constraint(greaterThanOrEqualToConstant: 18),
+        ])
+        return box
+    }
+
+    private func footLabel(_ s: String) -> NSTextField {
+        let l = NSTextField(labelWithString: s)
+        l.font = theme.font(11); l.textColor = theme.faint
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }
+
+    private func hstack(_ views: [NSView], _ spacing: CGFloat) -> NSStackView {
+        let s = NSStackView(views: views)
+        s.orientation = .horizontal; s.spacing = spacing; s.alignment = .centerY
+        s.translatesAutoresizingMaskIntoConstraints = false
+        return s
+    }
+
+    private func makeFooter() -> NSView {
+        let f = NSView()
+        f.translatesAutoresizingMaskIntoConstraints = false
+        let g1 = hstack([keycap("↑"), keycap("↓"), footLabel("Navigate")], 5)
+        let g2 = hstack([keycap("space"), footLabel("Quick Look")], 5)
+        let g3 = hstack([keycap("↵", accent: true), footLabel("Reveal in Finder")], 5)
+        f.addSubview(g1); f.addSubview(g2); f.addSubview(g3)
+        NSLayoutConstraint.activate([
+            g1.leadingAnchor.constraint(equalTo: f.leadingAnchor, constant: 16),
+            g1.centerYAnchor.constraint(equalTo: f.centerYAnchor),
+            g2.leadingAnchor.constraint(equalTo: g1.trailingAnchor, constant: 15),
+            g2.centerYAnchor.constraint(equalTo: f.centerYAnchor),
+            g3.trailingAnchor.constraint(equalTo: f.trailingAnchor, constant: -16),
+            g3.centerYAnchor.constraint(equalTo: f.centerYAnchor),
+        ])
+        return f
+    }
+
+    /// The full Sonoma popover: search bar (magnifier + transparent field + ⌥F),
+    /// dot-pill filters + status, results, keycap footer — divided by hairlines,
+    /// over a darkened tint above the vibrancy.
+    private func layoutAppleChrome() {
+        // darken the vibrancy to the mock's translucent panel tone
+        let tint = NSView(); tint.wantsLayer = true
+        tint.layer?.backgroundColor = (theme.dark
+            ? NSColor(srgbRed: 38/255, green: 38/255, blue: 42/255, alpha: 0.5)
+            : NSColor(srgbRed: 252/255, green: 252/255, blue: 253/255, alpha: 0.45)).cgColor
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(tint)
+        NSLayoutConstraint.activate([
+            tint.topAnchor.constraint(equalTo: view.topAnchor),
+            tint.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+
+        // search bar: transparent field + leading magnifier + trailing ⌥F chip
+        field.drawsBackground = false
+        field.isBezeled = false
+        field.backgroundColor = .clear
+        field.alignment = .left
+        let mag = NSImageView()
+        mag.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+        mag.contentTintColor = theme.faint
+        mag.symbolConfiguration = .init(pointSize: 17, weight: .regular)
+        mag.translatesAutoresizingMaskIntoConstraints = false
+        let chip = keycap("⌥F")
+        let searchRow = NSView()
+        searchRow.translatesAutoresizingMaskIntoConstraints = false
+        searchRow.addSubview(mag); searchRow.addSubview(field); searchRow.addSubview(chip)
+        NSLayoutConstraint.activate([
+            mag.leadingAnchor.constraint(equalTo: searchRow.leadingAnchor, constant: 18),
+            mag.centerYAnchor.constraint(equalTo: searchRow.centerYAnchor),
+            mag.widthAnchor.constraint(equalToConstant: 20),
+            mag.heightAnchor.constraint(equalToConstant: 20),
+            field.leadingAnchor.constraint(equalTo: mag.trailingAnchor, constant: 1),  // cell adds ~11
+            field.centerYAnchor.constraint(equalTo: searchRow.centerYAnchor),
+            chip.leadingAnchor.constraint(equalTo: field.trailingAnchor, constant: 12),
+            chip.trailingAnchor.constraint(equalTo: searchRow.trailingAnchor, constant: -18),
+            chip.centerYAnchor.constraint(equalTo: searchRow.centerYAnchor),
+            searchRow.heightAnchor.constraint(equalToConstant: 56),
+        ])
+
+        // dot-pill filters + status
+        let bar = FilterBar(items: [
+            .init(key: "text",  label: "Text",  dot: NSColor(0x8e8e93)),
+            .init(key: "pdf",   label: "PDF",   dot: NSColor(0xff453a)),
+            .init(key: "image", label: "Image", dot: NSColor(0x30b0c7)),
+            .init(key: "video", label: "Video", dot: NSColor(0xbf5af0)),
+        ], theme: theme)
+        bar.onChange = { [weak self] in self?.schedule() }
+        filterBar = bar
+        status.font = theme.font(11.5)
+        status.stringValue = ""
+        let filterRow = NSView()
+        filterRow.translatesAutoresizingMaskIntoConstraints = false
+        filterRow.addSubview(bar); filterRow.addSubview(status)
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: filterRow.leadingAnchor, constant: 16),
+            bar.centerYAnchor.constraint(equalTo: filterRow.centerYAnchor),
+            status.trailingAnchor.constraint(equalTo: filterRow.trailingAnchor, constant: -16),
+            status.centerYAnchor.constraint(equalTo: filterRow.centerYAnchor),
+            status.leadingAnchor.constraint(greaterThanOrEqualTo: bar.trailingAnchor, constant: 10),
+            filterRow.heightAnchor.constraint(equalToConstant: 46),
+        ])
+
+        let hair1 = hairline(), hair2 = hairline(), hair3 = hairline()
+        let footer = makeFooter()
+
+        for v in [searchRow, hair1, filterRow, hair2, scroll, hair3, footer] {
+            view.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            searchRow.topAnchor.constraint(equalTo: view.topAnchor),
+            searchRow.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            searchRow.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            hair1.topAnchor.constraint(equalTo: searchRow.bottomAnchor),
+            hair1.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hair1.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            filterRow.topAnchor.constraint(equalTo: hair1.bottomAnchor),
+            filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            filterRow.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            hair2.topAnchor.constraint(equalTo: filterRow.bottomAnchor),
+            hair2.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hair2.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            scroll.topAnchor.constraint(equalTo: hair2.bottomAnchor, constant: 7),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+
+            hair3.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 7),
+            hair3.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hair3.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            footer.topAnchor.constraint(equalTo: hair3.bottomAnchor),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footer.heightAnchor.constraint(equalToConstant: 36),
+        ])
     }
 
     private func styleField() {
@@ -778,12 +1058,13 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         }
     }
 
-    private func selectedTypes() -> [String] {
-        guard let seg = filterSeg else { return [] }
+    private func selectedTypes() -> [String]? {        // nil = all on, [] = all off
+        if let bar = filterBar { return bar.selectedKeys() }       // Apple chrome
+        guard let seg = filterSeg else { return nil }
         let on = kinds.indices
             .filter { seg.isSelected(forSegment: $0) }
             .map { kinds[$0].0 }                       // "text"/"pdf"/"image"/"video"
-        return on.count == kinds.count ? [] : on       // all selected == no filter
+        return on.count == kinds.count ? nil : on      // all selected == no filter
     }
 
     private func runSearch() {
@@ -794,10 +1075,16 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
             status.stringValue = ""
             return
         }
+        let types = selectedTypes()            // nil = all on, [] = all off, [..] = subset
+        if let types = types, types.isEmpty {  // every type toggled off → nothing matches
+            seq += 1
+            hits = []; table.reloadData()
+            status.stringValue = "0 results"
+            return
+        }
         var comps = URLComponents(string: Cfg.serverURL + "/search")!
         var items = [URLQueryItem(name: "q", value: q), URLQueryItem(name: "k", value: "40")]
-        let types = selectedTypes()
-        if !types.isEmpty { items.append(URLQueryItem(name: "types", value: types.joined(separator: ","))) }
+        if let types = types { items.append(URLQueryItem(name: "types", value: types.joined(separator: ","))) }
         comps.queryItems = items
         guard let url = comps.url else { return }
 
