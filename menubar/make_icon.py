@@ -33,8 +33,9 @@ def render_png() -> Path:
     pos = ((SZ - logo.width) // 2, (SZ - logo.height) // 2)
     img.paste(logo, pos, logo)
 
-    # thin white border hugging the squircle edge
-    b = 7
+    # thin white border hugging the squircle edge (must be thick enough in the
+    # 1024 master to still read when the README shows it at ~128px → ~22px ≈ 2-3px)
+    b = 22
     inset = b / 2
     ImageDraw.Draw(img).rounded_rectangle(
         [inset, inset, SZ - 1 - inset, SZ - 1 - inset],
