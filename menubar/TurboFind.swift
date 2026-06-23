@@ -450,6 +450,7 @@ final class ResultRow: NSView {
         h0.orientation = .horizontal
         h0.alignment = .centerY
         h0.spacing = max(theme.rowSpacing + 4, 6)
+        h0.distribution = .fill          // stretch the low-hugging middle so the date sits at the trailing edge
         h0.translatesAutoresizingMaskIntoConstraints = false
         h0.detachesHiddenViews = true
 
