@@ -33,6 +33,13 @@ def render_png() -> Path:
     pos = ((SZ - logo.width) // 2, (SZ - logo.height) // 2)
     img.paste(logo, pos, logo)
 
+    # thin white border hugging the squircle edge
+    b = 7
+    inset = b / 2
+    ImageDraw.Draw(img).rounded_rectangle(
+        [inset, inset, SZ - 1 - inset, SZ - 1 - inset],
+        radius=225, outline=(255, 255, 255, 255), width=b)
+
     out = HERE / "icon_1024.png"
     img.save(out)
     return out
