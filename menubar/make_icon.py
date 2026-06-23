@@ -16,7 +16,7 @@ HERE = Path(__file__).parent
 LOGO = HERE.parent / "assets" / "logo-white.png"
 
 
-def render_png() -> Path:
+def render_png(border: int = 0, out: Path = None) -> Path:
     img = Image.new("RGBA", (SZ, SZ), (0, 0, 0, 0))
     # dark rounded-square background (drawn via a mask for clean corners)
     bg = Image.new("RGBA", (SZ, SZ), (15, 17, 21, 255))
@@ -33,15 +33,15 @@ def render_png() -> Path:
     pos = ((SZ - logo.width) // 2, (SZ - logo.height) // 2)
     img.paste(logo, pos, logo)
 
-    # thin white border hugging the squircle edge (must be thick enough in the
-    # 1024 master to still read when the README shows it at ~128px → ~22px ≈ 2-3px)
-    b = 22
-    inset = b / 2
-    ImageDraw.Draw(img).rounded_rectangle(
-        [inset, inset, SZ - 1 - inset, SZ - 1 - inset],
-        radius=225, outline=(255, 255, 255, 255), width=b)
+    # Optional white border — used ONLY for the README image, not the app icon
+    # (macOS rounds/masks the .icns itself, so a baked border would look wrong).
+    if border > 0:
+        inset = border / 2
+        ImageDraw.Draw(img).rounded_rectangle(
+            [inset, inset, SZ - 1 - inset, SZ - 1 - inset],
+            radius=225, outline=(255, 255, 255, 255), width=border)
 
-    out = HERE / "icon_1024.png"
+    out = out or (HERE / "icon_1024.png")
     img.save(out)
     return out
 
@@ -67,4 +67,7 @@ def build_icns(src: Path) -> None:
 
 
 if __name__ == "__main__":
-    build_icns(render_png())
+    build_icns(render_png(border=0))                                   # app icon: no border
+    readme_icon = HERE.parent / "assets" / "icon.png"
+    render_png(border=22, out=readme_icon)                             # README: bordered
+    print("wrote", readme_icon)
