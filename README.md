@@ -98,11 +98,13 @@ menu) so the bolt is always there after a reboot.
 ### Themes
 
 Right-click the bolt → **Theme**. Each theme changes the **layout**, not just the
-colours, and your pick is remembered (UserDefaults). **Spotlight** is the default:
+colours, and your pick is remembered (UserDefaults). **Apple (Sonoma)** is the default:
 
 | Theme | Look |
 |-------|------|
-| **Spotlight** (default) | frosted/translucent, big centred search field, icon-forward rows, date on the right |
+| **Apple (Sonoma)** (default) | frosted `.menu` vibrancy, SF type, segmented-pill filters, accent-tinted selection |
+| **Apple (Light)** | the light counterpart |
+| **Spotlight** | frosted/translucent, big centred search field, icon-forward rows |
 | **Cards** | roomy rows with a date pill |
 | **Default (Dark)** | two-line rows, date column left, score right |
 | **Paper (Light)** | light, dense single-line rows, date on the right |
@@ -111,7 +113,7 @@ colours, and your pick is remembered (UserDefaults). **Spotlight** is the defaul
 
 **Accent colour** — right-click → **Accent colour** to recolour the highlight
 (the selection tint and the `name` badge; blue by default): Blue / Purple / Teal
-/ Green / Orange / Pink / Red / Yellow, or **Theme default**. Also remembered.
+/ Green / Orange / Pink, or **Theme default**. Also remembered.
 
 ### Updating
 

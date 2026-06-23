@@ -112,6 +112,40 @@ enum Themes {
     static let key = "turbofind.theme"
 
     static let all: [Theme] = [
+        // 0. Apple / Sonoma — the default: frosted .menu vibrancy, SF type,
+        //    segmented-pill filters, accent-tinted selection.
+        Theme(id: "apple", name: "Apple (Sonoma)", dark: true,
+              popover: NSSize(width: 660, height: 500),
+              bg: NSColor(0x1c1c1e),
+              fieldBg: NSColor(white: 1, alpha: 0.07),
+              fieldText: .white,
+              accent: NSColor(0x0a84ff),
+              title: NSColor(0xf5f5f7),
+              subtitle: NSColor(0xa1a1a6),
+              faint: NSColor(0x6e6e73),
+              mono: false, titleSize: 15.5, pathSize: 12, searchSize: 23,
+              rowHeight: 54, rowSpacing: 3, showFilters: true, searchStyle: .centered,
+              spec: LayoutSpec(showIcon: true, iconSize: 26, datePos: .right, dateFmt: .short,
+                               datePill: false, showPath: true, inline: false,
+                               showScore: false, showBadge: true),
+              translucent: true),
+
+        Theme(id: "apple-light", name: "Apple (Light)", dark: false,
+              popover: NSSize(width: 660, height: 500),
+              bg: NSColor(0xfcfcfd),
+              fieldBg: NSColor(white: 0, alpha: 0.045),
+              fieldText: NSColor(0x1d1d1f),
+              accent: NSColor(0x0a84ff),
+              title: NSColor(0x1d1d1f),
+              subtitle: NSColor(0x6e6e73),
+              faint: NSColor(0x9a9aa0),
+              mono: false, titleSize: 15.5, pathSize: 12, searchSize: 23,
+              rowHeight: 54, rowSpacing: 3, showFilters: true, searchStyle: .centered,
+              spec: LayoutSpec(showIcon: true, iconSize: 26, datePos: .right, dateFmt: .short,
+                               datePill: false, showPath: true, inline: false,
+                               showScore: false, showBadge: true),
+              translucent: true),
+
         // 1. The original.
         Theme(id: "default", name: "Default (Dark)", dark: true,
               popover: NSSize(width: 600, height: 500),
@@ -188,15 +222,14 @@ enum Themes {
 
     static func byId(_ id: String) -> Theme? { all.first { $0.id == id } }
     static func current() -> Theme {
-        byId(UserDefaults.standard.string(forKey: key) ?? "spotlight") ?? byId("spotlight") ?? all[0]
+        byId(UserDefaults.standard.string(forKey: key) ?? "apple") ?? byId("apple") ?? all[0]
     }
 
     // -- accent override (the "purple" in Cards, recolourable) ---------------
     static let accentKey = "turbofind.accent"
     static let accents: [(String, UInt32)] = [
-        ("Blue", 0x3b82f6), ("Purple", 0xa855f7), ("Teal", 0x14b8a6),
-        ("Green", 0x22c55e), ("Orange", 0xf97316), ("Pink", 0xec4899),
-        ("Red", 0xef4444), ("Yellow", 0xeab308),
+        ("Blue", 0x0a84ff), ("Purple", 0xbf5af0), ("Teal", 0x3bc7e0),
+        ("Green", 0x30d158), ("Orange", 0xff9f0a), ("Pink", 0xff375f),
     ]
     /// User-chosen accent, or nil to use the theme's own accent.
     static func currentAccent() -> NSColor? {
@@ -353,8 +386,29 @@ final class ResultRow: NSView {
         path.stringValue = dirStr
         path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let badge = label(theme.font(9, .semibold), theme.accent)
-        badge.stringValue = h.filename_match ? "name" : ""
+        // "name" badge: accent text on an accent-tint pill, only when the name matched.
+        var badgeView: NSView? = nil
+        if s.showBadge && h.filename_match {
+            let bl = label(theme.font(9, .semibold), theme.accent)
+            bl.attributedStringValue = NSAttributedString(string: "NAME", attributes: [
+                .font: theme.font(9, .semibold), .foregroundColor: theme.accent, .kern: 0.6])
+            let pill = NSView()
+            pill.translatesAutoresizingMaskIntoConstraints = false
+            pill.wantsLayer = true
+            pill.layer?.backgroundColor = theme.accent.withAlphaComponent(0.16).cgColor
+            pill.layer?.cornerRadius = 5
+            pill.layer?.masksToBounds = true
+            pill.addSubview(bl)
+            NSLayoutConstraint.activate([
+                bl.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+                bl.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 6),
+                bl.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -6),
+                pill.heightAnchor.constraint(equalToConstant: 15),
+            ])
+            pill.setContentHuggingPriority(.required, for: .horizontal)
+            pill.setContentCompressionResistancePriority(.required, for: .horizontal)
+            badgeView = pill
+        }
 
         let icon = label(NSFont.systemFont(ofSize: s.iconSize), theme.title)
         icon.stringValue = ResultRow.icon(for: h.path)
@@ -415,7 +469,7 @@ final class ResultRow: NSView {
             row.alignment = .firstBaseline
             row.spacing = 8
             row.addArrangedSubview(name)
-            if s.showBadge { row.addArrangedSubview(badge) }
+            if let b = badgeView { row.addArrangedSubview(b) }
             if s.showPath { row.addArrangedSubview(path) }
             middle = row
         } else {
@@ -424,7 +478,7 @@ final class ResultRow: NSView {
             top.alignment = .firstBaseline
             top.spacing = 6
             top.addArrangedSubview(name)
-            if s.showBadge { top.addArrangedSubview(badge) }
+            if let b = badgeView { top.addArrangedSubview(b) }
             if s.showPath {
                 let v = NSStackView()
                 v.orientation = .vertical
@@ -483,7 +537,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     private var scroll = NSScrollView()
     private var table  = ResultsTableView()
     private var status = NSTextField(labelWithString: "")
-    private var filters: [NSButton] = []
+    private var filterSeg: NSSegmentedControl?
 
     private var hits: [Hit] = []
     private var debounce: Timer?
@@ -517,7 +571,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     private func buildUI() {
         debounce?.invalidate(); debounce = nil   // no timer from the old UI fires post-rebuild
         view.subviews.forEach { $0.removeFromSuperview() }
-        filters.removeAll()
+        filterSeg = nil
         view.wantsLayer = true
 
         if theme.translucent {
@@ -525,7 +579,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
             // the popover instead of an opaque fill.
             view.layer?.backgroundColor = NSColor.clear.cgColor
             let fx = NSVisualEffectView()
-            fx.material = .hudWindow
+            fx.material = .menu                    // modern menu/popover surface
             fx.blendingMode = .behindWindow
             fx.state = .active
             fx.isEmphasized = true
@@ -551,9 +605,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
         field.alignment = (theme.searchStyle == .centered) ? .center : .left
         styleField()
 
-        status = NSTextField(labelWithString: theme.spec.showScore
-            ? "Type · ↓ into results · Space = Quick Look · Enter = open in Finder"
-            : "Type · ↓ into results · Enter = open in Finder")
+        status = NSTextField(labelWithString: "↑↓ Navigate · space Quick Look · ↵ Reveal in Finder")
         status.font = theme.font(11)
         status.textColor = theme.faint
         status.translatesAutoresizingMaskIntoConstraints = false
@@ -606,19 +658,22 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
 
         // Filter row only when the theme wants it; otherwise the table rises up.
         if theme.showFilters {
-            let filterRow = NSStackView()
+            // Native multi-select segmented pill (independent toggles), replacing
+            // the old checkbox row — the modern macOS filter control.
+            let seg = NSSegmentedControl(labels: kinds.map { $0.1 },
+                                         trackingMode: .selectAny,
+                                         target: self, action: #selector(filtersChanged))
+            seg.segmentDistribution = .fillEqually
+            seg.controlSize = .regular
+            seg.font = theme.font(12)
+            for i in kinds.indices { seg.setSelected(true, forSegment: i) }   // all on
+            seg.selectedSegmentBezelColor = theme.accent                      // tint selected
+            seg.translatesAutoresizingMaskIntoConstraints = false
+            filterSeg = seg
+
+            let filterRow = NSStackView(views: [seg])
             filterRow.orientation = .horizontal
-            filterRow.spacing = 12
             filterRow.translatesAutoresizingMaskIntoConstraints = false
-            for (val, title) in kinds {
-                let b = NSButton(checkboxWithTitle: title, target: self, action: #selector(filtersChanged))
-                b.state = .on
-                b.identifier = NSUserInterfaceItemIdentifier(val)
-                b.font = theme.font(12)
-                if theme.mono { b.contentTintColor = theme.accent }
-                filters.append(b)
-                filterRow.addArrangedSubview(b)
-            }
             view.addSubview(filterRow)
             cons += [
                 filterRow.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
@@ -724,9 +779,11 @@ final class SearchViewController: NSViewController, NSTableViewDataSource,
     }
 
     private func selectedTypes() -> [String] {
-        guard !filters.isEmpty else { return [] }
-        let on = filters.filter { $0.state == .on }.compactMap { $0.identifier?.rawValue }
-        return on.count == filters.count ? [] : on
+        guard let seg = filterSeg else { return [] }
+        let on = kinds.indices
+            .filter { seg.isSelected(forSegment: $0) }
+            .map { kinds[$0].0 }                       // "text"/"pdf"/"image"/"video"
+        return on.count == kinds.count ? [] : on       // all selected == no filter
     }
 
     private func runSearch() {
