@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white.png">
-    <img src="<img width="649" height="502" alt="image" src="https://github.com/user-attachments/assets/b0bacef6-fd78-4b32-84d2-3d31f47a51fa" />
-" width="116" alt="TurboFind">
-  </picture>
+  <img src="assets/icon.png" width="128" alt="TurboFind">
 </p>
 
 <p align="center">
