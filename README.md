@@ -134,6 +134,22 @@ ML) and talks to its loopback JSON API — the popover renders results natively,
 nothing is loaded in a browser. It stops the engine on quit. Edit `Cfg` in
 `menubar/TurboFind.swift` if your repo isn't at `~/turbofind`.
 
+### File-access permissions (stop the re-prompts)
+
+`swiftc` only **ad-hoc-signs** the app, and an ad-hoc signature's hash changes on
+every build — so macOS forgets the file-access (TCC) grant after each update or
+restart and re-asks. Fix it once with a stable self-signed identity:
+
+```bash
+cd menubar && ./make-cert.sh   # one-time: creates a "TurboFind Local" signing cert
+./build.sh                     # now signs with it (and every future build/update)
+```
+
+Then **System Settings → Privacy & Security → Full Disk Access → add
+TurboFind.app** and switch it on. Full Disk Access covers every folder (no
+per-folder prompts), and because the signature is now stable it survives updates
+and restarts. The cert is self-signed and local — no Apple Developer account.
+
 ## Floating-bar launcher (alternative)
 
 `swiftc Launcher.swift -o TurboFind -framework SwiftUI -framework AppKit && ./TurboFind`.
