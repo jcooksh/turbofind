@@ -1,35 +1,33 @@
 #!/usr/bin/env bash
-# Create a stable, self-signed CODE-SIGNING identity ("TurboFind Local") in your
-# login keychain — run ONCE.
+# Create a stable self-signed CODE-SIGNING identity ("TurboFind Local") — run ONCE.
 #
 # Why: swiftc only ad-hoc-signs the app, and an ad-hoc signature's hash changes
-# every rebuild. macOS ties Full Disk Access / file-access permissions to that
-# hash, so after every update (the in-app Update button rebuilds) or sometimes a
-# restart, the grant is forgotten and you're re-prompted. Signing with the SAME
-# self-signed identity each build keeps the signature stable, so the permission
-# sticks.
+# every rebuild. macOS ties Full Disk Access / file permissions (and a clean
+# right-click→Open for downloaded builds) to a STABLE signature. Signing with the
+# same self-signed identity each build keeps it stable, so the permission sticks.
 #
-#   cd menubar && ./make-cert.sh      # once
-#   ./build.sh && open TurboFind.app  # now signed with the stable identity
-#   then grant Full Disk Access once (the script prints how)
+# It lives in a DEDICATED keychain with a known password, so building never has to
+# prompt for your login password (works non-interactively / in CI too).
 #
-# No sudo. Touches only your login keychain. Re-running is a no-op.
+#   cd menubar && ./make-cert.sh        # once
+#   ./build.sh && open TurboFind.app    # now signed with the stable identity
+#
+# No sudo. Re-running is a no-op.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 NAME="TurboFind Local"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$NAME"; then
-  echo "✓ identity '$NAME' already exists — nothing to do."
+KC="$HOME/Library/Keychains/turbofind.keychain-db"
+KCPW="turbofind"
+
+if [ -f "$KC" ] && security find-identity -p codesigning "$KC" 2>/dev/null | grep -q "$NAME"; then
+  echo "✓ signing identity '$NAME' already set up — nothing to do."
   exit 0
 fi
 
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-
-# Use the system LibreSSL: Homebrew's OpenSSL 3 writes a PKCS#12 MAC that the
-# macOS Security framework rejects ("MAC verification failed").
-OPENSSL=/usr/bin/openssl
+OPENSSL=/usr/bin/openssl       # LibreSSL writes an Apple-compatible PKCS#12
 [ -x "$OPENSSL" ] || OPENSSL=openssl
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 cat > "$TMP/cs.cnf" <<'EOF'
 [req]
@@ -49,24 +47,19 @@ echo "==> generating self-signed code-signing certificate"
   -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
   -config "$TMP/cs.cnf" -extensions v3 >/dev/null 2>&1
 "$OPENSSL" pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
-  -out "$TMP/tf.p12" -passout pass:turbofind -name "$NAME" >/dev/null 2>&1
+  -out "$TMP/tf.p12" -passout "pass:$KCPW" -name "$NAME" >/dev/null 2>&1
 
-KC="$HOME/Library/Keychains/login.keychain-db"
-echo "==> importing into the login keychain"
-security import "$TMP/tf.p12" -k "$KC" -P turbofind -T /usr/bin/codesign >/dev/null
+echo "==> creating dedicated keychain (signing never needs your login password)"
+security create-keychain -p "$KCPW" "$KC" 2>/dev/null || true
+security set-keychain-settings "$KC"           # no auto-lock timeout
+security unlock-keychain -p "$KCPW" "$KC"
+security import "$TMP/tf.p12" -k "$KC" -P "$KCPW" -T /usr/bin/codesign >/dev/null
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null 2>&1 || true
 
-# Let codesign use the private key without a UI prompt on every build. Best
-# effort — if your login keychain has a password this may no-op and the FIRST
-# build will pop a keychain dialog where you click "Always Allow".
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC" >/dev/null 2>&1 || true
-
-echo
-echo "✓ created code-signing identity: $NAME"
-echo
-echo "Next:"
-echo "  1) ./build.sh                       (now signs with the stable identity)"
-echo "  2) open TurboFind.app"
-echo "  3) System Settings → Privacy & Security → Full Disk Access →"
-echo "     add TurboFind.app and switch it on."
-echo "     (Full Disk Access covers every folder, so no per-folder prompts —"
-echo "      and because the signature is now stable, it survives future updates.)"
+if security find-identity -p codesigning "$KC" | grep -q "$NAME"; then
+  echo "✓ created signing identity: $NAME"
+  echo "  build.sh will now sign with it (stable across rebuilds)."
+else
+  echo "!! identity not found after import" >&2
+  exit 1
+fi

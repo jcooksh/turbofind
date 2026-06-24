@@ -1205,12 +1205,101 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         buildMainMenu()                               // enables ⌘A/⌘C/⌘V/⌘X/⌘Z in the field
-        startServer()
         searchVC.theme = effectiveTheme()
         buildStatusItem()
         buildPopover()
         registerHotKey()
         setupLoginItem()
+        ensureEngineThenStart()                       // first run sets up ~/turbofind, else just starts
+    }
+
+    // -- first-run engine setup (for DMG installs with no ~/turbofind) ------
+
+    /// The engine (Python venv + serve.py) is ready to launch.
+    private func engineReady() -> Bool {
+        let fm = FileManager.default
+        return fm.isExecutableFile(atPath: Cfg.python)
+            && fm.fileExists(atPath: "\(Cfg.repoDir)/serve.py")
+    }
+
+    private func ensureEngineThenStart() {
+        if engineReady() { startServer(); return }
+        let a = NSAlert()
+        a.messageText = "Set up TurboFind"
+        a.informativeText = """
+        TurboFind needs to install its local search engine (Python + the models \
+        that read your files). This one-time setup runs in the background and \
+        takes a few minutes. macOS may ask you to install Apple's Command Line \
+        Tools — accept it.
+
+        Everything stays on your Mac — nothing is uploaded.
+        """
+        a.addButton(withTitle: "Set up")
+        a.addButton(withTitle: "Quit")
+        NSApp.activate(ignoringOtherApps: true)
+        guard a.runModal() == .alertFirstButtonReturn else { NSApp.terminate(nil); return }
+        runFirstRunSetup()
+    }
+
+    private func runFirstRunSetup() {
+        statusItem.button?.appearsDisabled = true     // dim the bolt while we work
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let ok = self?.bootstrapEngine() ?? false
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.statusItem.button?.appearsDisabled = false
+                if ok {
+                    self.startServer()
+                    let done = NSAlert()
+                    done.messageText = "TurboFind is ready"
+                    done.informativeText = """
+                    Click the bolt in the menu bar (or press ⌥F) to search. It's \
+                    indexing your files in the background now.
+
+                    Tip: System Settings → Privacy & Security → Full Disk Access → \
+                    add TurboFind so it can read every folder.
+                    """
+                    done.runModal()
+                } else {
+                    let fail = NSAlert()
+                    fail.messageText = "Setup didn't finish"
+                    fail.informativeText = """
+                    The engine couldn't be installed automatically. The most common \
+                    cause is missing developer tools — open Terminal and run \
+                    `xcode-select --install`, then reopen TurboFind.
+                    """
+                    fail.runModal()
+                }
+            }
+        }
+    }
+
+    /// Clone the repo to ~/turbofind, build the venv, install deps. No app
+    /// rebuild — the running bundle is the UI; it only needs the engine present.
+    private func bootstrapEngine() -> Bool {
+        let script = """
+        set -e
+        REPO="$HOME/turbofind"
+        if [ -d "$REPO/.git" ]; then
+          git -C "$REPO" pull --ff-only || true
+        else
+          git clone --depth 1 https://github.com/jcooksh/turbofind "$REPO"
+        fi
+        cd "$REPO"
+        PY="$(command -v python3.12 || command -v python3.11 || command -v python3)"
+        [ -n "$PY" ] || { echo "no python3"; exit 1; }
+        "$PY" -m venv .venv
+        ./.venv/bin/pip install -U pip
+        ./.venv/bin/pip install -r requirements.txt
+        """
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = ["-lc", script]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 
     /// An accessory app shows no menu bar, so the standard Edit-menu key

@@ -26,14 +26,22 @@ fi
 # permissions across rebuilds. swiftc only ad-hoc-signs (a hash that changes
 # every build → TCC forgets and re-prompts). Use $TURBOFIND_SIGN_ID, else the
 # self-signed "TurboFind Local" identity from make-cert.sh, else stay ad-hoc.
+KC="$HOME/Library/Keychains/turbofind.keychain-db"
 SIGN_ID="${TURBOFIND_SIGN_ID:-}"
-# NB: no -v — a self-signed identity is untrusted, so it only shows without -v.
-if [ -z "$SIGN_ID" ] && security find-identity -p codesigning 2>/dev/null | grep -q "TurboFind Local"; then
+KCARG=()
+# Prefer the dedicated TurboFind keychain (no login-password prompt). NB: no -v —
+# a self-signed identity is untrusted, so it only lists without -v.
+if [ -z "$SIGN_ID" ] && [ -f "$KC" ]; then
+  security unlock-keychain -p turbofind "$KC" 2>/dev/null || true
+  if security find-identity -p codesigning "$KC" 2>/dev/null | grep -q "TurboFind Local"; then
+    SIGN_ID="TurboFind Local"; KCARG=(--keychain "$KC")
+  fi
+elif [ -z "$SIGN_ID" ] && security find-identity -p codesigning 2>/dev/null | grep -q "TurboFind Local"; then
   SIGN_ID="TurboFind Local"
 fi
 if [ -n "$SIGN_ID" ]; then
   echo "==> signing $APP with: $SIGN_ID"
-  codesign --force --deep --sign "$SIGN_ID" "$APP" \
+  codesign --force --deep --sign "$SIGN_ID" "${KCARG[@]}" "$APP" \
     && echo "    signed (stable identity — file permissions will persist)" \
     || echo "    sign failed — app stays ad-hoc"
 else
