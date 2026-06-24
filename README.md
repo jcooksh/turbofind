@@ -20,6 +20,18 @@ A private, blazing-fast, **fully local** semantic file explorer for macOS.
 Search your files — text, PDFs, images, video — by *meaning*, not filename.
 Nothing leaves your machine.
 
+## See it
+
+Search by what's *inside* a file, even when the filename gives nothing away:
+
+**PDFs** — "adobe invoice" finds the actual invoice, named only `invoice.pdf`:
+
+![Searching PDFs by content](assets/demo-pdf.png)
+
+**Video** — "video of dog" finds the clip whose name is `Black_Video_Despite_Generation.mp4`:
+
+![Searching video by content](assets/demo-video.png)
+
 ## ⚡ Quick start
 
 ### Homebrew (easiest)
