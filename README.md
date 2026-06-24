@@ -33,18 +33,44 @@ Search by what's *inside* a file, even when the filename gives nothing away:
 
 ## ⚡ Quick start
 
-### Homebrew (easiest)
+Pick whichever fits — all three end up at the same app. Each builds the local
+engine on first run (a few minutes), then the in-app **Update** button keeps it
+current. One-time after install: grant **Full Disk Access** to
+`~/turbofind/menubar/TurboFind.app` (System Settings → Privacy & Security).
+
+### Homebrew
 
 ```bash
 brew install --cask jcooksh/tap/turbofind
 ```
 
-Builds from source on install (TurboFind drives a local Python + ML engine in
-`~/turbofind`), so the first run takes a few minutes to set up. After that the
-in-app **Update** button keeps it current. One-time: grant **Full Disk Access**
-to `~/turbofind/menubar/TurboFind.app` (System Settings → Privacy & Security).
+### No Homebrew (one line)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jcooksh/turbofind/main/install.sh | bash
+```
+
+Same thing without brew. Needs Apple's Command Line Tools (git + python3) —
+macOS offers to install them if missing.
+
+### Download the app
+
+[Download for macOS](https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg)
+→ drag to Applications → **right-click → Open** the first time (it's self-signed,
+not notarized). First launch sets up the engine.
 
 ### From source
+
+```bash
+git clone https://github.com/jcooksh/turbofind && cd turbofind
+python3 -m venv .venv && source .venv/bin/activate
+pip install -U pip                     # old pip can choke on wheels
+pip install -r requirements.txt        # first run downloads the models (~once)
+
+# index your files — text, PDFs, images & video. ~ = your whole home (junk
+# dirs like node_modules/Library are auto-skipped). First run takes a few
+# minutes; the progress bar shows an ETA. MULTI_MODAL=1 turns on media the
+# first time; after that it's automatic.
 
 ```bash
 git clone https://github.com/jcooksh/turbofind && cd turbofind
