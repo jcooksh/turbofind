@@ -3,16 +3,15 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">
-    <img src="assets/download-mac.svg" alt="Install for macOS" height="46">
+  <a href="https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg">
+    <img src="assets/download-mac.svg" alt="Download for macOS" height="46">
   </a>
 </p>
 
-<p align="center">
-  <code>brew install --cask jcooksh/tap/turbofind</code>
-</p>
+<p align="center"><sub>First open: <b>right-click the app → Open</b> (it's self-signed, not
+notarized). First launch sets up the engine — a few minutes, needs internet.</sub></p>
 
-<p align="center"><sub>Apple Silicon · macOS 13+ · builds from source on install — see <a href="#-quick-start">Quick start</a></sub></p>
+<p align="center"><sub>No-fuss alternative: <code>brew install --cask jcooksh/tap/turbofind</code></sub></p>
 
 # TurboFind
 
