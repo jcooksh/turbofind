@@ -18,6 +18,19 @@ Nothing leaves your machine.
 
 ## ⚡ Quick start
 
+### Homebrew (easiest)
+
+```bash
+brew install --cask jcooksh/tap/turbofind
+```
+
+Builds from source on install (TurboFind drives a local Python + ML engine in
+`~/turbofind`), so the first run takes a few minutes to set up. After that the
+in-app **Update** button keeps it current. One-time: grant **Full Disk Access**
+to `~/turbofind/menubar/TurboFind.app` (System Settings → Privacy & Security).
+
+### From source
+
 ```bash
 git clone https://github.com/jcooksh/turbofind && cd turbofind
 python3 -m venv .venv && source .venv/bin/activate
