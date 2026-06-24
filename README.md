@@ -3,12 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg">
-    <img src="assets/download-mac.svg" alt="Download for macOS" height="46">
-  </a>
+  <code>brew install --cask jcooksh/tap/turbofind</code>
 </p>
 
-<p align="center"><sub>Apple Silicon · macOS 13+ · or build from source (see Quick start)</sub></p>
+<p align="center"><sub>Apple Silicon · macOS 13+ · builds from source on install — see <a href="#-quick-start">Quick start</a></sub></p>
 
 # TurboFind
 
