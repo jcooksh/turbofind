@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="46" viewBox="0 0 220 46" role="img" aria-label="Install for macOS">
+  <rect x="1" y="1" width="218" height="44" rx="11" fill="#16181d" stroke="#2a2e37"/>
+  <g stroke="#ffffff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 13 V27"/>
+    <path d="M24 22 L30 28 L36 22"/>
+    <path d="M22 33 H38"/>
+  </g>
+  <text x="54" y="29" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif"
+        font-size="15" font-weight="600" fill="#ffffff">Install for macOS</text>
+</svg>

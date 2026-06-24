@@ -3,6 +3,12 @@
 </p>
 
 <p align="center">
+  <a href="#-quick-start">
+    <img src="assets/download-mac.svg" alt="Install for macOS" height="46">
+  </a>
+</p>
+
+<p align="center">
   <code>brew install --cask jcooksh/tap/turbofind</code>
 </p>
 
