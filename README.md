@@ -3,15 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg">
-    <img src="assets/download-mac.svg" alt="Download for macOS" height="46">
-  </a>
+  <code>brew install --cask jcooksh/tap/turbofind</code>
 </p>
-
-<p align="center"><sub>First open: <b>right-click the app → Open</b> (it's self-signed, not
-notarized). First launch sets up the engine — a few minutes, needs internet.</sub></p>
-
-<p align="center"><sub>No-fuss alternative: <code>brew install --cask jcooksh/tap/turbofind</code></sub></p>
+<p align="center">
+  <sub>no Homebrew?</sub><br>
+  <code>curl -fsSL https://raw.githubusercontent.com/jcooksh/turbofind/main/install.sh | bash</code>
+</p>
 
 # TurboFind
 
@@ -33,10 +30,15 @@ Search by what's *inside* a file, even when the filename gives nothing away:
 
 ## ⚡ Quick start
 
-Pick whichever fits — all three end up at the same app. Each builds the local
-engine on first run (a few minutes), then the in-app **Update** button keeps it
-current. One-time after install: grant **Full Disk Access** to
-`~/turbofind/menubar/TurboFind.app` (System Settings → Privacy & Security).
+Both installers end up at the same app. They build the local engine on first run
+(a few minutes), then the in-app **Update** button keeps it current. One-time
+after install: grant **Full Disk Access** to `~/turbofind/menubar/TurboFind.app`
+(System Settings → Privacy & Security).
+
+> Both need Apple's Command Line Tools (`git` + `python3`). If a Mac has never had
+> them, macOS pops an "install developer tools" dialog the first time — click
+> **Install** (don't cancel) and re-run. They're a one-time, Apple-provided
+> dependency, not part of TurboFind.
 
 ### Homebrew
 
@@ -49,15 +51,6 @@ brew install --cask jcooksh/tap/turbofind
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jcooksh/turbofind/main/install.sh | bash
 ```
-
-Same thing without brew. Needs Apple's Command Line Tools (git + python3) —
-macOS offers to install them if missing.
-
-### Download the app
-
-[Download for macOS](https://github.com/jcooksh/turbofind/releases/latest/download/TurboFind.dmg)
-→ drag to Applications → **right-click → Open** the first time (it's self-signed,
-not notarized). First launch sets up the engine.
 
 ### From source
 
