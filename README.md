@@ -37,8 +37,8 @@ after install: grant **Full Disk Access** to `~/turbofind/menubar/TurboFind.app`
 
 > Both need Apple's Command Line Tools (`git` + `python3`). If a Mac has never had
 > them, macOS pops an "install developer tools" dialog the first time — click
-> **Install** (don't cancel) and re-run. They're a one-time, Apple-provided
-> dependency, not part of TurboFind.
+> **Install** and wait; the installer detects when they're ready and continues on
+> its own (no need to re-run). One-time, Apple-provided — not part of TurboFind.
 
 ### Homebrew
 

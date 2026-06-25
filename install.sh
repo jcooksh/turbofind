@@ -12,10 +12,26 @@ set -euo pipefail
 REPO="${TURBOFIND_HOME:-$HOME/turbofind}"
 echo "==> TurboFind: installing into $REPO"
 
-if ! command -v git >/dev/null 2>&1; then
-  echo "!! 'git' not found. Run:  xcode-select --install"
-  echo "   then re-run this installer."
-  exit 1
+# 0) Apple Command Line Tools (git + python3). On a Mac that's never had them,
+# the first `git` call pops a macOS install dialog and FAILS immediately — so we
+# trigger the install ourselves and WAIT for it to finish, then continue.
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "==> One-time: TurboFind needs Apple's Command Line Tools (git + python3)."
+  echo "    A macOS dialog is opening — click \"Install\" and wait a few minutes."
+  echo "    This window will continue on its own once they're ready."
+  xcode-select --install >/dev/null 2>&1 || true
+  tries=0
+  until xcode-select -p >/dev/null 2>&1; do
+    sleep 5
+    tries=$((tries + 1))
+    if [ "$tries" -ge 360 ]; then          # ~30 min
+      echo "!! Command Line Tools didn't finish installing."
+      echo "   Finish the macOS installer (or run: xcode-select --install),"
+      echo "   then re-run this command."
+      exit 1
+    fi
+  done
+  echo "==> Command Line Tools ready — continuing."
 fi
 
 # 1) source
